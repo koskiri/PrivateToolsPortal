@@ -149,6 +149,40 @@
             display: grid;
             gap: 10px;
         }
+        .keys-list.hidden,
+        .key-panel.hidden {
+            display: none;
+        }
+
+        .section-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+
+        .switcher {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .switch-btn {
+            min-height: 38px;
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text);
+            font-weight: 700;
+            padding: 0 12px;
+        }
+
+        .switch-btn.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+        }
 
         .key-item {
             border: 1px solid var(--border);
@@ -172,6 +206,12 @@
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
             font-size: 12px;
             margin-bottom: 8px;
+        }
+        .mono-note {
+            margin-top: -2px;
+            margin-bottom: 8px;
+            color: var(--muted);
+            font-size: 12px;
         }
 
         .controls {
@@ -219,6 +259,22 @@
         }
 
         button:hover { background: var(--primary-dark); }
+        .download-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            border-radius: 10px;
+            border: none;
+            background: var(--primary);
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+            padding: 0 14px;
+            transition: background .2s ease;
+            text-decoration: none;
+        }
+        .download-link:hover { background: var(--primary-dark); }
 
         button.danger { background: var(--danger); }
 
@@ -325,17 +381,58 @@
         </div>
 
         <div class="section">
-            <h2>3) Создать ключ (Amnezia WG или XRay)</h2>
-            <form method="post" action="/dashboard/create-key">
-                <div class="controls" style="margin-bottom: 8px;">
-                    <select name="key_kind" required>
-                        <option value="awg">Amnezia WG</option>
-                        <option value="xray">XRay</option>
-                    </select>
-                    <input type="text" name="key_title" placeholder="Название устройства (например, iPhone)" />
+            <div class="section-head">
+                <h2 style="margin: 0;">3) Управление ключами</h2>
+                <div class="switcher">
+                    <button type="button" class="switch-btn active" data-panel-target="create-key-panel">Создать ключ</button>
+                    <button type="button" class="switch-btn" data-panel-target="my-keys-panel">Мои ключи</button>
                 </div>
-                <button type="submit">Создать ключ</button>
-            </form>
+            </div>
+            <div id="create-key-panel" class="key-panel">
+                <div class="section-note">
+                    Создайте новый ключ для устройства. Формат поддерживает Amnezia WG и XRay.
+                </div>
+                <form method="post" action="/dashboard/create-key">
+                    <div class="controls" style="margin-bottom: 8px;">
+                        <select name="key_kind" required>
+                            <option value="awg">Amnezia WG</option>
+                            <option value="xray">XRay</option>
+                        </select>
+                        <input type="text" name="key_title" placeholder="Название устройства (например, iPhone)" />
+                    </div>
+                    <button type="submit">Создать ключ</button>
+                </form>
+            </div>
+            <div id="my-keys-panel" class="key-panel hidden">
+                {% if keys %}
+                    <div class="keys-list">
+                        {% for key in keys %}
+                            <div class="key-item">
+                                <div class="key-meta">
+                                    <span><strong>ID:</strong> {{ key.id }}</span>
+                                    <span><strong>Тип:</strong> {{ "Amnezia WG" if key.kind == "awg" else "XRay" }}</span>
+                                    <span><strong>Создан:</strong> {{ key.created_at }}</span>
+                                </div>
+                                <textarea class="key-payload" id="payload-{{ key.id }}" readonly>{{ key.payload }}</textarea>
+                                <div class="mono-note">Копируйте или скачивайте ключ в один клик.</div>
+                                <div class="controls" style="margin-bottom: 8px;">
+                                    <button type="button" class="copy-key-btn" data-copy-target="payload-{{ key.id }}">Копировать ключ</button>
+                                    <a class="download-link" href="/dashboard/keys/{{ key.id }}/download">Скачать файлом</a>
+                                </div>
+                                <form method="post" action="/dashboard/keys/{{ key.id }}/rename" class="controls" style="margin-bottom: 8px;">
+                                    <input type="text" name="key_title" value="{{ key.title or '' }}" required />
+                                    <button type="submit">Переименовать</button>
+                                </form>
+                                <form method="post" action="/dashboard/keys/{{ key.id }}/delete" class="controls">
+                                    <button type="submit" class="danger">Удалить ключ</button>
+                                </form>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="section-note">У вас пока нет активных ключей.</div>
+                {% endif %}
+            </div>
         </div>
 
         <div class="section">
@@ -348,32 +445,38 @@
             </form>
         </div>
 
-        <div class="section">
-            <h2>5) Ваши текущие ключи</h2>
-            {% if keys %}
-                <div class="keys-list">
-                    {% for key in keys %}
-                        <div class="key-item">
-                            <div class="key-meta">
-                                <span><strong>ID:</strong> {{ key.id }}</span>
-                                <span><strong>Тип:</strong> {{ "Amnezia WG" if key.kind == "awg" else "XRay" }}</span>
-                                <span><strong>Создан:</strong> {{ key.created_at }}</span>
-                            </div>
-                            <textarea class="key-payload" readonly>{{ key.payload }}</textarea>
-                            <form method="post" action="/dashboard/keys/{{ key.id }}/rename" class="controls" style="margin-bottom: 8px;">
-                                <input type="text" name="key_title" value="{{ key.title or '' }}" required />
-                                <button type="submit">Переименовать</button>
-                            </form>
-                            <form method="post" action="/dashboard/keys/{{ key.id }}/delete" class="controls">
-                                <button type="submit" class="danger">Удалить ключ</button>
-                            </form>
-                        </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="section-note">У вас пока нет активных ключей.</div>
-            {% endif %}
         </div>
-    </div>
+    <script>
+        const panelButtons = document.querySelectorAll("[data-panel-target]");
+        const panels = document.querySelectorAll(".key-panel");
+
+        panelButtons.forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const target = btn.dataset.panelTarget;
+                panels.forEach((panel) => panel.classList.toggle("hidden", panel.id !== target));
+                panelButtons.forEach((button) => button.classList.toggle("active", button === btn));
+            });
+        });
+
+        const copyButtons = document.querySelectorAll(".copy-key-btn");
+        copyButtons.forEach((btn) => {
+            btn.addEventListener("click", async () => {
+                const targetId = btn.dataset.copyTarget;
+                const payloadField = document.getElementById(targetId);
+                if (!payloadField) return;
+                try {
+                    await navigator.clipboard.writeText(payloadField.value);
+                    const previousText = btn.textContent;
+                    btn.textContent = "Скопировано ✓";
+                    setTimeout(() => { btn.textContent = previousText; }, 1400);
+                } catch (e) {
+                    payloadField.select();
+                    document.execCommand("copy");
+                    btn.textContent = "Скопировано ✓";
+                    setTimeout(() => { btn.textContent = "Копировать ключ"; }, 1400);
+                }
+            });
+        });
+    </script>
 </body>
 </html>

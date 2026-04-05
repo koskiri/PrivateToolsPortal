@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -1179,6 +1179,33 @@ async def dashboard_delete_key(request: Request, key_id: int):
     if not updated:
         return RedirectResponse("/dashboard?error=Ключ+не+найден+или+уже+удален", status_code=303)
     return RedirectResponse("/dashboard?success=Ключ+удален", status_code=303)
+
+
+@app.get("/dashboard/keys/{key_id}/download")
+async def dashboard_download_key(request: Request, key_id: int):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    with get_db_connection() as con:
+        key = con.execute(
+            """
+            SELECT id, kind, title, payload
+            FROM vpn_keys
+            WHERE id = ? AND telegram_id = ? AND revoked_at IS NULL
+            """,
+            (key_id, user["telegram_id"]),
+        ).fetchone()
+
+    if not key:
+        return RedirectResponse("/dashboard?error=Ключ+не+найден+или+уже+удален", status_code=303)
+
+    safe_title = "".join(ch for ch in (key["title"] or "vpn_key") if ch.isalnum() or ch in ("-", "_")).strip("_")
+    if not safe_title:
+        safe_title = "vpn_key"
+    filename = f"{safe_title}_{key['id']}.conf"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return PlainTextResponse(content=key["payload"], headers=headers)
 
 
 @app.post("/dashboard/support")
