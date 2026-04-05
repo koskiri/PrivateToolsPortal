@@ -473,7 +473,7 @@
         <div class="section">
             <h2>4) Поддержка</h2>
             <div class="section-note">Создавайте обращения, ведите переписку и оценивайте качество решения.</div>
-            <form method="post" action="/dashboard/support/tickets">
+            <form method="post" action="{{ request.url_for('dashboard_support_create_ticket') }}">
                 <div class="controls" style="margin-bottom: 8px;">
                     <input type="text" name="subject" maxlength="160" placeholder="Тема обращения" required />
                     <select name="category" required>
