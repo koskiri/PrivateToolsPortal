@@ -661,7 +661,17 @@ def get_admin_password() -> str:
 def is_admin(request: Request) -> bool:
     admin_password = get_admin_password()
     cookie_value = request.cookies.get(ADMIN_COOKIE, "")
-    return bool(admin_password) and hmac.compare_digest(cookie_value, admin_password)
+
+    if not admin_password or not cookie_value:
+        return False
+
+    try:
+        return hmac.compare_digest(
+            cookie_value.encode("utf-8"),
+            admin_password.encode("utf-8"),
+        )
+    except Exception:
+        return False
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -1591,7 +1601,10 @@ async def admin_invites_page(request: Request, error: str = "", created: str = "
 @app.post("/admin/invites/login")
 async def admin_invites_login(password: str = Form(...)):
     admin_password = get_admin_password()
-    if not admin_password or not hmac.compare_digest(password, admin_password):
+    if not admin_password or not hmac.compare_digest(
+        password.encode("utf-8"),
+        admin_password.encode("utf-8"),
+        ):
         return RedirectResponse("/admin/invites?error=Неверный+пароль+админа", status_code=303)
 
     response = RedirectResponse("/admin/invites", status_code=303)
