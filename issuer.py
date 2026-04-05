@@ -24,6 +24,12 @@ class KeyRequest(BaseModel):
     title: str
     telegram_id: int
 
+class RevokeKeyRequest(BaseModel):
+    kind: str
+    vps_id: int
+    peer_pub: Optional[str] = None
+    peer_ip: Optional[str] = None
+
 
 def db():
     con = sqlite3.connect(DB_PATH)
@@ -227,6 +233,20 @@ def create_awg_peer(vps: dict, name: str) -> dict:
     except Exception:
         raise RuntimeError(f"Bad JSON from VPS: {out[:2000]}")
 
+def revoke_awg_peer(vps: dict, peer_pub: Optional[str], peer_ip: Optional[str]) -> None:
+    if not (peer_pub or peer_ip):
+        raise RuntimeError("Missing AWG peer identity")
+
+    checks = []
+    if peer_pub:
+        checks.append(f"/usr/local/bin/awg-bot delete --iface {vps['iface']} --pub {peer_pub}")
+        checks.append(f"/usr/local/bin/awg-bot remove --iface {vps['iface']} --pub {peer_pub}")
+    if peer_ip:
+        checks.append(f"/usr/local/bin/awg-bot delete --iface {vps['iface']} --peer-ip {peer_ip}")
+        checks.append(f"/usr/local/bin/awg-bot remove --iface {vps['iface']} --peer-ip {peer_ip}")
+
+    remote = " || ".join(f"({cmd})" for cmd in checks)
+    ssh_cmd(vps, f"bash -lc {json.dumps(remote)}")
 
 def ensure_awg_payload_is_compatible(payload: str) -> str:
     payload = (payload or "").strip()
@@ -292,6 +312,14 @@ def create_xray_client(vps: dict, name: str) -> dict:
         "client_id": client_id,
     }
 
+def revoke_xray_client(vps: dict, client_id: Optional[str]) -> None:
+    if not client_id:
+        raise RuntimeError("Missing XRay client id")
+    cmd = (
+        f"(/usr/local/bin/xray-bot delete {client_id})"
+        f" || (/usr/local/bin/xray-bot remove {client_id})"
+    )
+    ssh_cmd(vps, f"bash -lc {json.dumps(cmd)}")
 
 @app.get("/health")
 def health():
@@ -337,5 +365,29 @@ def create_key(data: KeyRequest, authorization: Optional[str] = Header(default=N
             "peer_ip": None,
         }
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/keys/revoke")
+def revoke_key(data: RevokeKeyRequest, authorization: Optional[str] = Header(default=None)):
+    if ISSUER_TOKEN:
+        expected = f"Bearer {ISSUER_TOKEN}"
+        if authorization != expected:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    kind = data.kind.strip().lower()
+    if kind not in {"awg", "xray"}:
+        raise HTTPException(status_code=400, detail="Unknown key kind")
+
+    vps = get_vps_by_id(data.vps_id)
+    if not vps:
+        raise HTTPException(status_code=400, detail="Unknown VPS")
+
+    try:
+        if kind == "awg":
+            revoke_awg_peer(vps, peer_pub=data.peer_pub, peer_ip=data.peer_ip)
+        else:
+            revoke_xray_client(vps, client_id=data.peer_pub)
+        return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

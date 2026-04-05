@@ -499,6 +499,41 @@ def create_vpn_key_on_vps(kind: str, title: str, telegram_id: int) -> tuple[str,
             vps_id = None
     return key_payload, vps_id, key_data.get("peer_pub"), key_data.get("peer_ip")
 
+
+def revoke_vpn_key_on_vps(kind: str, vps_id: Optional[int], peer_pub: Optional[str], peer_ip: Optional[str]) -> None:
+    issuer_url = os.getenv(VPS_ISSUER_URL_ENV, "").strip().rstrip("/")
+    if not issuer_url:
+        raise RuntimeError("Не настроен адрес сервиса выдачи ключей на VPS")
+    if vps_id is None:
+        raise RuntimeError("Неизвестен сервер ключа")
+    if not (peer_pub or peer_ip):
+        raise RuntimeError("Недостаточно данных для отзыва ключа")
+
+    req = urllib_request.Request(
+        f"{issuer_url}/keys/revoke",
+        data=json.dumps(
+            {
+                "kind": kind,
+                "vps_id": vps_id,
+                "peer_pub": peer_pub,
+                "peer_ip": peer_ip,
+            }
+        ).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    issuer_token = os.getenv(VPS_ISSUER_TOKEN_ENV, "").strip()
+    if issuer_token:
+        req.add_header("Authorization", f"Bearer {issuer_token}")
+
+    try:
+        with urllib_request.urlopen(req, timeout=15):
+            return
+    except urllib_error.HTTPError as exc:
+        raise RuntimeError(f"VPS вернул ошибку {exc.code}") from exc
+    except urllib_error.URLError as exc:
+        raise RuntimeError("Не удалось подключиться к VPS для отзыва ключа") from exc
+
 def format_support_status(status: str) -> str:
     labels = {
         "open": "Открыт",
@@ -1160,6 +1195,28 @@ async def dashboard_delete_key(request: Request, key_id: int):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+
+    with get_db_connection() as con:
+        key = con.execute(
+            """
+            SELECT id, kind, vps_id, peer_pub, peer_ip
+            FROM vpn_keys
+            WHERE id = ? AND telegram_id = ? AND revoked_at IS NULL
+            """,
+            (key_id, user["telegram_id"]),
+        ).fetchone()
+    if not key:
+        return RedirectResponse("/dashboard?error=Ключ+не+найден+или+уже+удален", status_code=303)
+
+    try:
+        revoke_vpn_key_on_vps(
+            kind=key["kind"],
+            vps_id=key["vps_id"],
+            peer_pub=key["peer_pub"],
+            peer_ip=key["peer_ip"],
+        )
+    except Exception as exc:
+        return RedirectResponse(f"/dashboard?error={quote_plus(str(exc))}", status_code=303)
 
     with get_db_connection() as con:
         updated = con.execute(
