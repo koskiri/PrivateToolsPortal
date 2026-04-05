@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Админ — инвайты</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; color: #111827; }
+        .wrap { max-width: 1180px; margin: 28px auto; padding: 0 16px; }
+        .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 3px 14px rgba(0,0,0,.06); margin-bottom: 16px; }
+        h1 { margin-top: 0; }
+        form { margin: 0; }
+        input, select { width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 10px; border: 1px solid #d1d5db; border-radius: 10px; }
+        button { border: none; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; color: #fff; background: #2563eb; }
+        .danger { background: #b91c1c; }
+        .success { color: #065f46; margin-bottom: 10px; }
+        .error { color: #b91c1c; margin-bottom: 10px; }
+        .table-wrap { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 10px; }
+        table { width: 100%; border-collapse: collapse; min-width: 860px; }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 14px; vertical-align: top; }
+        th { white-space: nowrap; background: #f9fafb; }
+        td { word-break: break-word; }
+        code { background: #f3f4f6; border-radius: 6px; padding: 2px 6px; }
+        .topline { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .invite-form { display: grid; grid-template-columns: 1fr; gap: 8px; min-width: 320px; }
+        .custom-fields { display: grid; gap: 8px; }
+        .hidden { display: none; }
+        .col-code { width: 170px; }
+        .col-link { width: 230px; }
+        .col-plan { min-width: 230px; }
+        .col-date { width: 160px; }
+        .col-login { width: 130px; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="card">
+            <h1>Админ-панель инвайтов</h1>
+            {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+            {% if not is_admin %}
+                <form method="post" action="/admin/invites/login">
+                    <input type="password" name="password" placeholder="Пароль администратора" required />
+                    <button type="submit">Войти как админ</button>
+                </form>
+            {% else %}
+                <div class="topline">
+                    <form method="post" action="/invite" class="invite-form">
+                        <select name="tariff" id="tariff-select" required>
+                            <option value="trial">Бесплатно: 1 ключ, 7 дней (тест)</option>
+                            <option value="plan_5">100 ₽ — 5 ключей / 30 дней</option>
+                            <option value="plan_10">180 ₽ — 10 ключей / 30 дней</option>
+                            <option value="plan_40">300 ₽ — 40 ключей / 30 дней</option>
+                            <option value="custom">Кастом: до 100 ключей</option>
+                        </select>
+                        <div id="custom-fields" class="custom-fields hidden">
+                            <input type="number" id="custom-key-limit" name="custom_key_limit" min="1" max="100" placeholder="Кастом: лимит ключей (1-100)" />
+                            <input type="number" id="custom-price-rub" name="custom_price_rub" min="0" max="999999" placeholder="Кастом: цена, ₽" />
+                            <input type="number" id="custom-duration-days" name="custom_duration_days" min="1" max="365" placeholder="Кастом: срок, дней" value="30" />
+                        </div>
+                        <button type="submit">Сгенерировать инвайт</button>
+                    </form>
+                    <form method="post" action="/admin/invites/logout">
+                        <button type="submit" class="danger">Выйти</button>
+                    </form>
+                </div>
+            {% endif %}
+        </div>
+
+        {% if is_admin %}
+            <div class="card">
+                {% if created %}
+                    <div class="success">
+                        Инвайт создан: <code>{{ created }}</code><br />
+                        Ссылка: <a href="/activate?code={{ created }}">/activate?code={{ created }}</a>
+                    </div>
+                {% endif %}
+                <h2>Последние инвайты</h2>
+            <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="col-code">Код</th>
+                                <th class="col-link">Ссылка</th>
+                                <th class="col-plan">Тариф</th>
+                                <th class="col-date">Создан</th>
+                                <th class="col-date">Использован</th>
+                                <th class="col-login">Логин</th>
+                            </tr>
+                    </thead>
+                        <tbody>
+                            {% for inv in invites %}
+                                <tr>
+                                    <td><code>{{ inv.invite_code }}</code></td>
+                                    <td><a href="/activate?code={{ inv.invite_code }}">/activate?code={{ inv.invite_code }}</a></td>
+                                    <td>{{ inv.title or '-' }} ({{ inv.key_limit or 0 }} ключей, {{ inv.price_rub or 0 }} ₽)</td>
+                                    <td>{{ inv.created_at }}</td>
+                                    <td>{{ inv.used_at or '-' }}</td>
+                                    <td>{{ inv.user_login or '-' }}</td>
+                                </tr>
+                            {% else %}
+                                <tr><td colspan="6">Пока нет инвайтов</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+    <script>
+        (function () {
+            const tariffSelect = document.getElementById("tariff-select");
+            const customFields = document.getElementById("custom-fields");
+            const customKeyLimit = document.getElementById("custom-key-limit");
+            const customPriceRub = document.getElementById("custom-price-rub");
+            const customDurationDays = document.getElementById("custom-duration-days");
+            if (!tariffSelect || !customFields) return;
+
+            function syncCustomFields() {
+                const isCustom = tariffSelect.value === "custom";
+                customFields.classList.toggle("hidden", !isCustom);
+                customKeyLimit.required = isCustom;
+                customPriceRub.required = isCustom;
+                customDurationDays.required = isCustom;
+            }
+
+            tariffSelect.addEventListener("change", syncCustomFields);
+            syncCustomFields();
+        })();
+    </script>
+</body>
+</html>

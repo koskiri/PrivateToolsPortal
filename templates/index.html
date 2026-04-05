@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>PrivateToolsPortal</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            background: #f5f7fb;
+            color: #222;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+        .cards {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 220px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        }
+        .card-title {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .card-value {
+            font-size: 28px;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        }
+        th, td {
+            text-align: left;
+            padding: 14px;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            background: #fafafa;
+        }
+    </style>
+</head>
+<body>
+    <h1>PrivateToolsPortal</h1>
+
+    <div class="cards">
+        <div class="card">
+            <div class="card-title">Подписчики</div>
+            <div class="card-value">{{ subscribers_count }}</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Активные ключи</div>
+            <div class="card-value">{{ active_keys_count }}</div>
+        </div>
+        <div class="card">
+            <div class="card-title">VPS в базе</div>
+            <div class="card-value">{{ vps_count }}</div>
+        </div>
+    </div>
+
+    <h2>Пользователи</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Telegram ID</th>
+                <th>Тариф</th>
+                <th>Лимит</th>
+                <th>Активных ключей</th>
+                <th>Цена</th>
+                <th>Активна до</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.telegram_id }}</td>
+                <td>{{ user.title or user.plan or '-' }}</td>
+                <td>{{ user.key_limit or 0 }}</td>
+                <td>{{ user.active_keys }}</td>
+                <td>{{ user.price_rub or 0 }} ₽</td>
+                <td>{{ user.active_until }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

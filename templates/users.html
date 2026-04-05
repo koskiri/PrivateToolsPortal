@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Пользователи</h1>
+
+<table>
+    <tr>
+        <th>ID</th>
+        <th>Тариф</th>
+        <th>Ключи</th>
+        <th>До</th>
+    </tr>
+
+    {% for u in users %}
+    <tr>
+        <td>{{ u.telegram_id }}</td>
+        <td>{{ u.title or u.plan }}</td>
+        <td>{{ u.active_keys }}</td>
+        <td>{{ u.active_until }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Вход</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }
+        .card { max-width: 380px; margin: 80px auto; background: #fff; border-radius: 14px; padding: 24px; box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+        h1 { margin-top: 0; font-size: 24px; }
+        input { width: 100%; margin-bottom: 12px; padding: 10px; border: 1px solid #d1d5db; border-radius: 10px; box-sizing: border-box; }
+        button { width: 100%; padding: 11px; border: none; border-radius: 10px; background: #2563eb; color: #fff; font-weight: 700; cursor: pointer; }
+        .error { color: #b91c1c; margin-bottom: 10px; }
+        .success { color: #065f46; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Логин</h1>
+        {% if success %}<div class="success">{{ success }}</div>{% endif %}
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <form method="post" action="/login">
+            <input type="text" name="login" placeholder="Логин" required />
+            <input type="password" name="password" placeholder="Пароль" required />
+            <button type="submit">Войти</button>
+        </form>
+    </div>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Активация</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }
+        .card { max-width: 520px; margin: 60px auto; background: #fff; border-radius: 14px; padding: 24px; box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+        h1 { margin-top: 0; }
+        input { width: 100%; margin-bottom: 12px; padding: 10px; border: 1px solid #d1d5db; border-radius: 10px; box-sizing: border-box; }
+        button { width: 100%; padding: 11px; border: none; border-radius: 10px; background: #059669; color: #fff; font-weight: 700; cursor: pointer; }
+        .error { color: #b91c1c; margin-bottom: 10px; }
+        .success { color: #065f46; margin-bottom: 10px; }
+        .hint { margin: 8px 0 16px; color: #374151; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Активация аккаунта</h1>
+
+        {% if success %}<div class="success">{{ success }}</div>{% endif %}
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+        {% if invite %}
+            <div class="hint">
+                Тариф: <b>{{ invite.title or invite.plan or '-' }}</b><br />
+                Лимит ключей: <b>{{ invite.key_limit or 0 }}</b><br />
+                Цена: <b>{{ invite.price_rub or 0 }} ₽</b><br />
+                Срок: <b>{{ invite.duration_days or 0 }} дней</b>
+            </div>
+        {% endif %}
+
+        <form method="post" action="/activate">
+            <input type="text" name="code" placeholder="Код инвайта" value="{{ code }}" required />
+            <input type="text" name="login" placeholder="Придумайте логин" required />
+            <input type="password" name="password" placeholder="Придумайте пароль" required />
+            <button type="submit">Активировать</button>
+        </form>
+    </div>
+</body>
+</html>
