@@ -1271,7 +1271,11 @@ async def dashboard_download_key(request: Request, key_id: int):
     if not key:
         return RedirectResponse("/dashboard?error=Ключ+не+найден+или+уже+удален", status_code=303)
 
-    safe_title = "".join(ch for ch in (key["title"] or "vpn_key") if ch.isalnum() or ch in ("-", "_")).strip("_")
+    safe_title = "".join(
+        ch
+        for ch in (key["title"] or "vpn_key")
+        if (ch.isascii() and ch.isalnum()) or ch in ("-", "_")
+    ).strip("_")
     if not safe_title:
         safe_title = "vpn_key"
     filename = f"{safe_title}_{key['id']}.conf"
