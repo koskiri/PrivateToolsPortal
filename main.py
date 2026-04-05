@@ -554,7 +554,10 @@ def revoke_vpn_key_on_vps(kind: str, vps_id: Optional[int], peer_pub: Optional[s
             raise RuntimeError("Не удалось подключиться к VPS для отзыва ключа") from exc
 
     if saw_not_found:
-        raise RuntimeError("VPS endpoint для отзыва ключа не найден (404)")
+        # Некоторые инсталляции issuer работают без endpoint отзыва ключей.
+        # В таком случае не блокируем удаление ключа в портале:
+        # запись будет помечена удаленной только в локальной БД.
+        return
 
 def format_support_status(status: str) -> str:
     labels = {
