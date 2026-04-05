@@ -559,6 +559,45 @@ def revoke_vpn_key_on_vps(kind: str, vps_id: Optional[int], peer_pub: Optional[s
         # запись будет помечена удаленной только в локальной БД.
         return
 
+
+def deactivate_user_keys(con: sqlite3.Connection, telegram_id: int) -> tuple[int, int]:
+    active_keys = con.execute(
+        """
+        SELECT id, kind, vps_id, peer_pub, peer_ip
+        FROM vpn_keys
+        WHERE telegram_id = ? AND revoked_at IS NULL
+        """,
+        (telegram_id,),
+    ).fetchall()
+    if not active_keys:
+        return 0, 0
+
+    revoked_ids: list[int] = []
+    failed_count = 0
+    for key in active_keys:
+        try:
+            revoke_vpn_key_on_vps(
+                kind=key["kind"],
+                vps_id=key["vps_id"],
+                peer_pub=key["peer_pub"],
+                peer_ip=key["peer_ip"],
+            )
+        except Exception:
+            failed_count += 1
+        revoked_ids.append(int(key["id"]))
+
+    now_iso = utcnow().isoformat()
+    placeholders = ",".join("?" for _ in revoked_ids)
+    con.execute(
+        f"""
+        UPDATE vpn_keys
+        SET revoked_at = ?, payload = ''
+        WHERE telegram_id = ? AND id IN ({placeholders}) AND revoked_at IS NULL
+        """,
+        (now_iso, telegram_id, *revoked_ids),
+    )
+    return len(revoked_ids), failed_count
+
 def format_support_status(status: str) -> str:
     labels = {
         "open": "Открыт",
@@ -819,6 +858,11 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             """,
             (user["telegram_id"],),
         ).fetchone()
+        if stats and stats["active_until"]:
+            active_until = datetime.fromisoformat(stats["active_until"])
+            if active_until <= utcnow():
+                deactivate_user_keys(con, user["telegram_id"])
+                con.commit()
         keys = con.execute(
             """
             SELECT id, kind, title, payload, created_at
@@ -1017,11 +1061,17 @@ async def dashboard_subscription_action(request: Request, action: str = Form(...
                     refund_rub = 0
             if refund_rub > 0:
                 increase_wallet_balance(con, user["telegram_id"], refund_rub)
+            _, failed_revocations = deactivate_user_keys(con, user["telegram_id"])
             con.execute(
                 "UPDATE subscriptions SET active_until = ? WHERE telegram_id = ?",
                 (now.isoformat(), user["telegram_id"]),
             )
             con.commit()
+            if failed_revocations > 0:
+                return RedirectResponse(
+                    f"/dashboard?success=Подписка+отключена.+{refund_rub}+₽+вернули+на+внутренний+баланс&error=Часть+ключей+не+удалось+отозвать+на+VPS,+но+в+портале+они+деактивированы",
+                    status_code=303,
+                )
             return RedirectResponse(
                 f"/dashboard?success=Подписка+отключена.+{refund_rub}+₽+вернули+на+внутренний+баланс",
                 status_code=303,
@@ -1165,6 +1215,8 @@ async def dashboard_create_key(request: Request, key_kind: str = Form(...), key_
 
         active_until = datetime.fromisoformat(stats["active_until"])
         if active_until <= now:
+            deactivate_user_keys(con, user["telegram_id"])
+            con.commit()
             return RedirectResponse("/dashboard?error=Подписка+истекла,+продлите+ее", status_code=303)
         if stats["active_keys"] >= (stats["key_limit"] or 0):
             return RedirectResponse("/dashboard?error=Достигнут+лимит+ключей+для+тарифа", status_code=303)
