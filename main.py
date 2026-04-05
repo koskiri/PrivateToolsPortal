@@ -523,7 +523,7 @@ def revoke_vpn_key_on_vps(kind: str, vps_id: Optional[int], peer_pub: Optional[s
         }
     ).encode("utf-8")
     endpoints = ("/keys/revoke", "/revoke")
-    last_http_error = None
+    saw_not_found = False
 
     for endpoint in endpoints:
         req = urllib_request.Request(
@@ -539,16 +539,22 @@ def revoke_vpn_key_on_vps(kind: str, vps_id: Optional[int], peer_pub: Optional[s
             with urllib_request.urlopen(req, timeout=15):
                 return
         except urllib_error.HTTPError as exc:
-            # Совместимость со старыми версиями issuer: если endpoint не найден,
-            # пробуем legacy-маршрут.
-            if exc.code == 404 and endpoint != endpoints[-1]:
-                last_http_error = exc
+            # 404 считаем безопасным сценарием:
+            # - новый или legacy endpoint может отсутствовать на issuer;
+            # - ключ мог быть уже удален на стороне VPS.
+            # Для первого endpoint пробуем fallback, для последнего завершаем успехом.
+            if exc.code == 404:
+                saw_not_found = True
+                if endpoint != endpoints[-1]:
+                    continue
+                return
+            if endpoint != endpoints[-1]:
                 continue
             raise RuntimeError(f"VPS вернул ошибку {exc.code}") from exc
         except urllib_error.URLError as exc:
             raise RuntimeError("Не удалось подключиться к VPS для отзыва ключа") from exc
 
-    if last_http_error is not None:
+    if saw_not_found:
         # Отзыв ключа должен быть идемпотентным: если VPS отвечает 404,
         # считаем, что ключ уже отсутствует на стороне сервера.
         return
