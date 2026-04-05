@@ -234,17 +234,11 @@ def create_awg_peer(vps: dict, name: str) -> dict:
         raise RuntimeError(f"Bad JSON from VPS: {out[:2000]}")
 
 def revoke_awg_peer(vps: dict, peer_pub: Optional[str], peer_ip: Optional[str]) -> None:
-    if not (peer_pub or peer_ip):
-        raise RuntimeError("Missing AWG peer identity")
+    if not peer_pub:
+        raise RuntimeError("Missing AWG peer public key")
 
-    checks = []
-    if peer_pub:
-        checks.append(f"/usr/local/bin/awg-bot revoke --iface {vps['iface']} --pub {peer_pub}")
-    if peer_ip:
-        checks.append(f"/usr/local/bin/awg-bot revoke --iface {vps['iface']} --peer-ip {peer_ip}")
-
-    remote = " || ".join(f"({cmd})" for cmd in checks)
-    ssh_cmd(vps, f"bash -lc {json.dumps(remote)}")
+    cmd = f"/usr/local/bin/awg-bot revoke --iface {vps['iface']} --peer-pub {peer_pub}"
+    ssh_cmd(vps, f"bash -lc {json.dumps(cmd)}")
 
 def ensure_awg_payload_is_compatible(payload: str) -> str:
     payload = (payload or "").strip()
