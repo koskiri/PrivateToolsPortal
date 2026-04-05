@@ -414,8 +414,8 @@
                                     <span><strong>Создан:</strong> {{ key.created_at }}</span>
                                 </div>
                                 <textarea class="key-payload" id="payload-{{ key.id }}" readonly>{{ key.payload }}</textarea>
-                                <div class="mono-note">Копируйте или скачивайте ключ в один клик.</div>␊
-                                <div class="controls" style="margin-bottom: 8px;">␊
+                                <div class="mono-note">Копируйте или скачивайте ключ в один клик.</div>
+                                <div class="controls" style="margin-bottom: 8px;">
                                     <form method="post" action="/dashboard/keys/{{ key.id }}/delete" class="controls" style="display: inline-flex; margin: 0;">
                                         <button type="submit" class="danger">Удалить ключ</button>
                                     </form>
@@ -425,8 +425,8 @@
                                 <form method="post" action="/dashboard/keys/{{ key.id }}/rename" class="controls" style="margin-bottom: 8px;">
                                     <input type="text" name="key_title" value="{{ key.title or '' }}" required />
                                     <button type="submit">Переименовать</button>
-                                </form>␊
-                            </div>␊
+                                </form>
+                            </div>
                         {% endfor %}
                     </div>
                 {% else %}
