@@ -1236,6 +1236,7 @@ async def dashboard_support_create_ticket(
         )
         ticket_id = ticket_cursor.lastrowid
         con.execute(
+            """
             INSERT INTO support_messages (ticket_id, telegram_id, sender_role, sender_id, text, created_at)
             VALUES (?, ?, 'user', ?, ?, ?)
             """,
