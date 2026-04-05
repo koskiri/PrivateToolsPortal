@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -1205,7 +1205,7 @@ async def dashboard_download_key(request: Request, key_id: int):
         safe_title = "vpn_key"
     filename = f"{safe_title}_{key['id']}.conf"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
-    return PlainTextResponse(content=key["payload"], headers=headers)
+    return Response(content=key["payload"], media_type="application/octet-stream", headers=headers)
 
 
 @app.post("/dashboard/support")
