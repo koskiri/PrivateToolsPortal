@@ -539,15 +539,14 @@ def revoke_vpn_key_on_vps(kind: str, vps_id: Optional[int], peer_pub: Optional[s
             with urllib_request.urlopen(req, timeout=15):
                 return
         except urllib_error.HTTPError as exc:
-            # 404 считаем безопасным сценарием:
-            # - новый или legacy endpoint может отсутствовать на issuer;
-            # - ключ мог быть уже удален на стороне VPS.
-            # Для первого endpoint пробуем fallback, для последнего завершаем успехом.
+            # 404 может означать, что endpoint не существует на issuer.
+            # Пробуем fallback endpoint, но если оба вернули 404 —
+            # считаем отзыв неуспешным и не удаляем ключ только в БД.
             if exc.code == 404:
                 saw_not_found = True
                 if endpoint != endpoints[-1]:
                     continue
-                return
+                break
             if endpoint != endpoints[-1]:
                 continue
             raise RuntimeError(f"VPS вернул ошибку {exc.code}") from exc
@@ -555,9 +554,7 @@ def revoke_vpn_key_on_vps(kind: str, vps_id: Optional[int], peer_pub: Optional[s
             raise RuntimeError("Не удалось подключиться к VPS для отзыва ключа") from exc
 
     if saw_not_found:
-        # Отзыв ключа должен быть идемпотентным: если VPS отвечает 404,
-        # считаем, что ключ уже отсутствует на стороне сервера.
-        return
+        raise RuntimeError("VPS endpoint для отзыва ключа не найден (404)")
 
 def format_support_status(status: str) -> str:
     labels = {
