@@ -24,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "bot.db"
+FALLBACK_DB_PATH = BASE_DIR / "bot.local.db"
 SESSION_COOKIE = "portal_session"
 SESSION_DAYS = 14
 ADMIN_COOKIE = "portal_admin_session"
@@ -83,7 +84,15 @@ def utcnow() -> datetime:
 
 
 def get_db_connection() -> sqlite3.Connection:
-    con = sqlite3.connect(DB_PATH)
+    try:
+        con = sqlite3.connect(DB_PATH)
+    except sqlite3.OperationalError:
+        # In dev/staging bot.db can be a broken symlink to external storage.
+        # Fall back to a local SQLite file so the portal can still start.
+        if Path(DB_PATH).is_symlink():
+            con = sqlite3.connect(FALLBACK_DB_PATH)
+        else:
+            raise
     con.row_factory = sqlite3.Row
     return con
 
