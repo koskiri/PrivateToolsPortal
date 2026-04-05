@@ -1247,6 +1247,14 @@ async def dashboard_support_create_ticket(
     return RedirectResponse("/dashboard?success=Обращение+в+поддержку+создано", status_code=303)
 
 
+@app.get("/dashboard/support/tickets")
+async def dashboard_support_tickets_redirect(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    return RedirectResponse("/dashboard", status_code=303)
+
+
 @app.post("/dashboard/support/tickets/{ticket_id}/reply")
 async def dashboard_support_reply(request: Request, ticket_id: int, message: str = Form(...)):
     user = get_current_user(request)
