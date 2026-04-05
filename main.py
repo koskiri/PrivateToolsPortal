@@ -509,30 +509,43 @@ def revoke_vpn_key_on_vps(kind: str, vps_id: Optional[int], peer_pub: Optional[s
     if not (peer_pub or peer_ip):
         raise RuntimeError("Недостаточно данных для отзыва ключа")
 
-    req = urllib_request.Request(
-        f"{issuer_url}/keys/revoke",
-        data=json.dumps(
-            {
-                "kind": kind,
-                "vps_id": vps_id,
-                "peer_pub": peer_pub,
-                "peer_ip": peer_ip,
-            }
-        ).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     issuer_token = os.getenv(VPS_ISSUER_TOKEN_ENV, "").strip()
-    if issuer_token:
-        req.add_header("Authorization", f"Bearer {issuer_token}")
+    payload = json.dumps(
+        {
+            "kind": kind,
+            "vps_id": vps_id,
+            "peer_pub": peer_pub,
+            "peer_ip": peer_ip,
+        }
+    ).encode("utf-8")
+    endpoints = ("/keys/revoke", "/revoke")
+    last_http_error = None
 
-    try:
-        with urllib_request.urlopen(req, timeout=15):
-            return
-    except urllib_error.HTTPError as exc:
-        raise RuntimeError(f"VPS вернул ошибку {exc.code}") from exc
-    except urllib_error.URLError as exc:
-        raise RuntimeError("Не удалось подключиться к VPS для отзыва ключа") from exc
+    for endpoint in endpoints:
+        req = urllib_request.Request(
+            f"{issuer_url}{endpoint}",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        if issuer_token:
+            req.add_header("Authorization", f"Bearer {issuer_token}")
+
+        try:
+            with urllib_request.urlopen(req, timeout=15):
+                return
+        except urllib_error.HTTPError as exc:
+            # Совместимость со старыми версиями issuer: если endpoint не найден,
+            # пробуем legacy-маршрут.
+            if exc.code == 404 and endpoint != endpoints[-1]:
+                last_http_error = exc
+                continue
+            raise RuntimeError(f"VPS вернул ошибку {exc.code}") from exc
+        except urllib_error.URLError as exc:
+            raise RuntimeError("Не удалось подключиться к VPS для отзыва ключа") from exc
+
+    if last_http_error is not None:
+        raise RuntimeError(f"VPS вернул ошибку {last_http_error.code}") from last_http_error
 
 def format_support_status(status: str) -> str:
     labels = {
