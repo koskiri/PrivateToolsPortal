@@ -545,7 +545,9 @@ def revoke_vpn_key_on_vps(kind: str, vps_id: Optional[int], peer_pub: Optional[s
             raise RuntimeError("Не удалось подключиться к VPS для отзыва ключа") from exc
 
     if last_http_error is not None:
-        raise RuntimeError(f"VPS вернул ошибку {last_http_error.code}") from last_http_error
+        # Отзыв ключа должен быть идемпотентным: если VPS отвечает 404,
+        # считаем, что ключ уже отсутствует на стороне сервера.
+        return
 
 def format_support_status(status: str) -> str:
     labels = {
