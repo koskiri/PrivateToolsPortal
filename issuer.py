@@ -239,11 +239,9 @@ def revoke_awg_peer(vps: dict, peer_pub: Optional[str], peer_ip: Optional[str]) 
 
     checks = []
     if peer_pub:
-        checks.append(f"/usr/local/bin/awg-bot delete --iface {vps['iface']} --pub {peer_pub}")
-        checks.append(f"/usr/local/bin/awg-bot remove --iface {vps['iface']} --pub {peer_pub}")
+        checks.append(f"/usr/local/bin/awg-bot revoke --iface {vps['iface']} --pub {peer_pub}")
     if peer_ip:
-        checks.append(f"/usr/local/bin/awg-bot delete --iface {vps['iface']} --peer-ip {peer_ip}")
-        checks.append(f"/usr/local/bin/awg-bot remove --iface {vps['iface']} --peer-ip {peer_ip}")
+        checks.append(f"/usr/local/bin/awg-bot revoke --iface {vps['iface']} --peer-ip {peer_ip}")
 
     remote = " || ".join(f"({cmd})" for cmd in checks)
     ssh_cmd(vps, f"bash -lc {json.dumps(remote)}")
