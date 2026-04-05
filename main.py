@@ -503,11 +503,15 @@ def create_vpn_key_on_vps(kind: str, title: str, telegram_id: int) -> tuple[str,
 def revoke_vpn_key_on_vps(kind: str, vps_id: Optional[int], peer_pub: Optional[str], peer_ip: Optional[str]) -> None:
     issuer_url = os.getenv(VPS_ISSUER_URL_ENV, "").strip().rstrip("/")
     if not issuer_url:
-        raise RuntimeError("Не настроен адрес сервиса выдачи ключей на VPS")
+        # В некоторых окружениях портал работает без issuer-сервиса.
+        # Не блокируем удаление ключа в интерфейсе — просто пропускаем отзыв на VPS.
+        return
     if vps_id is None:
-        raise RuntimeError("Неизвестен сервер ключа")
+        # Legacy-ключи могли создаваться без привязки к серверу.
+        return
     if not (peer_pub or peer_ip):
-        raise RuntimeError("Недостаточно данных для отзыва ключа")
+        # Для части старых записей нет технических данных для отзыва.
+        return
 
     issuer_token = os.getenv(VPS_ISSUER_TOKEN_ENV, "").strip()
     payload = json.dumps(
