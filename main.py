@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 from urllib import error as urllib_error
+from urllib.parse import quote_plus
 from urllib import request as urllib_request
 from dotenv import load_dotenv
 load_dotenv()
@@ -61,6 +62,7 @@ TARIFF_PRESETS = {
 USER_TARIFF_CHOICES = ("plan_5", "plan_10", "plan_40")
 SUBSCRIPTION_RENEW_DAYS = 30
 MAX_SUPPORT_MESSAGE_LEN = 2000
+MAX_SUPPORT_SUBJECT_LEN = 160
 YOOKASSA_API_URL = "https://api.yookassa.ru/v3/payments"
 YOOKASSA_SHOP_ID_ENV = "YOOKASSA_SHOP_ID"
 YOOKASSA_SECRET_KEY_ENV = "YOOKASSA_SECRET_KEY"
@@ -162,6 +164,15 @@ def ensure_support_tables(con: sqlite3.Connection) -> None:
         )
         """
     )
+    ticket_columns = {row["name"] for row in con.execute("PRAGMA table_info(support_tickets)").fetchall()}
+    if "subject" not in ticket_columns:
+        con.execute("ALTER TABLE support_tickets ADD COLUMN subject TEXT")
+    if "category" not in ticket_columns:
+        con.execute("ALTER TABLE support_tickets ADD COLUMN category TEXT")
+    if "priority" not in ticket_columns:
+        con.execute("ALTER TABLE support_tickets ADD COLUMN priority TEXT")
+    if "updated_at" not in ticket_columns:
+        con.execute("ALTER TABLE support_tickets ADD COLUMN updated_at TEXT")
 
 def ensure_billing_tables(con: sqlite3.Connection) -> None:
     con.execute(
@@ -479,6 +490,14 @@ def create_vpn_key_on_vps(kind: str, title: str, telegram_id: int) -> tuple[str,
             vps_id = None
     return key_payload, vps_id, key_data.get("peer_pub"), key_data.get("peer_ip")
 
+def format_support_status(status: str) -> str:
+    labels = {
+        "open": "Открыт",
+        "in_progress": "В работе",
+        "closed": "Закрыт",
+    }
+    return labels.get(status, status or "—")
+
 
 
 def fetch_yookassa_payment_status(payment_id: str) -> str:
@@ -741,7 +760,31 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             (user["telegram_id"],),
         ).fetchall()
         balance_rub = get_or_create_wallet_balance(con, user["telegram_id"])
+        support_tickets = con.execute(
+            """
+            SELECT id, status, subject, category, priority, created_at, updated_at, closed_at, rating, feedback
+            FROM support_tickets
+            WHERE telegram_id = ?
+            ORDER BY id DESC
+            LIMIT 20
+            """,
+            (user["telegram_id"],),
+        ).fetchall()
+        support_messages = con.execute(
+            """
+            SELECT m.ticket_id, m.sender_role, m.text, m.created_at, u.login AS admin_login
+            FROM support_messages m
+            LEFT JOIN portal_users u ON u.id = m.sender_id
+            WHERE m.telegram_id = ?
+            ORDER BY m.id ASC
+            """,
+            (user["telegram_id"],),
+        ).fetchall()
         con.commit()
+
+    support_messages_by_ticket: dict[int, list[sqlite3.Row]] = {}
+    for msg in support_messages:
+        support_messages_by_ticket.setdefault(int(msg["ticket_id"]), []).append(msg)
 
     days_left = 0
     active_until_display = None
@@ -766,11 +809,18 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             "yookassa_enabled": yookassa_enabled(),
             "success": success,
             "error": error,
+            "support_tickets": support_tickets,
+            "support_messages_by_ticket": support_messages_by_ticket,
+            "support_status_label": format_support_status,
         },
     )
 
 @app.post("/dashboard/change-plan")
-async def dashboard_change_plan(request: Request, plan_key: str = Form(...)):
+async def dashboard_change_plan(
+    request: Request,
+    plan_key: str = Form(...),
+    comment: str = Form(""),
+):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
@@ -778,104 +828,40 @@ async def dashboard_change_plan(request: Request, plan_key: str = Form(...)):
     preset = TARIFF_PRESETS.get(plan_key)
     if not preset or plan_key not in USER_TARIFF_CHOICES:
         return RedirectResponse("/dashboard?error=Неизвестный+тариф", status_code=303)
-    if not yookassa_enabled():
-        return RedirectResponse("/dashboard?error=ЮKassa+не+настроена,+обратитесь+к+администратору", status_code=303)
+    user_comment = comment.strip()
+    if len(user_comment) > MAX_SUPPORT_MESSAGE_LEN:
+        return RedirectResponse("/dashboard?error=Комментарий+слишком+длинный", status_code=303)
 
-    now = utcnow()
+    now = utcnow().isoformat()
+    subject = f"Смена тарифа на {preset['title']}"
+    base_message = (
+        f"Прошу сменить мой тариф на: {preset['title']}.\n"
+        f"Текущий запрос создан из личного кабинета."
+    )
+    if user_comment:
+        base_message += f"\n\nКомментарий пользователя:\n{user_comment}"
     with get_db_connection() as con:
-        current_subscription = con.execute(
-            "SELECT plan, price_rub, active_until FROM subscriptions WHERE telegram_id = ?",
-            (user["telegram_id"],),
-        ).fetchone()
-        if current_subscription and current_subscription["plan"] == preset["plan"]:
-            return RedirectResponse(
-                "/dashboard?error=Этот+тариф+у+вас+уже+активен.+Для+продления+используйте+кнопку+продления",
-                status_code=303,
+        ticket_cursor = con.execute(
+            """
+            INSERT INTO support_tickets (
+                telegram_id, status, subject, category, priority, created_at, updated_at, closed_at, rating, feedback
             )
-        amount_rub, refund_rub, wallet_credit_rub, new_active_until = build_plan_change_terms(
-            current_subscription,
-            int(preset["price_rub"]),
-            now,
+            VALUES (?, 'open', ?, 'billing', 'normal', ?, ?, NULL, NULL, NULL)
+            """,
+            (user["telegram_id"], subject, now, now),
         )
-        if wallet_credit_rub > 0:
-            increase_wallet_balance(con, user["telegram_id"], wallet_credit_rub)
-        wallet_balance = get_or_create_wallet_balance(con, user["telegram_id"])
-        if wallet_balance >= amount_rub and decrease_wallet_balance(con, user["telegram_id"], amount_rub):
-            con.execute(
-                """
-                INSERT INTO subscriptions (telegram_id, active_until, plan, key_limit, price_rub, title)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(telegram_id) DO UPDATE SET
-                    active_until=excluded.active_until,
-                    plan=excluded.plan,
-                    key_limit=excluded.key_limit,
-                    price_rub=excluded.price_rub,
-                    title=excluded.title
-                """,
-                (
-                    user["telegram_id"],
-                    new_active_until.isoformat(),
-                    preset["plan"],
-                    preset["key_limit"],
-                    preset["price_rub"],
-                    preset["title"],
-                ),
-            )
-            con.commit()
-            success_message = "Тариф+изменен.+Оплачено+с+внутреннего+баланса"
-            if refund_rub > 0:
-                success_message += f".+Учтен+возврат+{refund_rub}+₽+за+неиспользованные+дни"
-            return RedirectResponse(
-                f"/dashboard?success={success_message}",
-                status_code=303,
-            )
-        try:
-            payment_id, confirmation_url = create_yookassa_payment(
-                amount_rub=amount_rub,
-                description=f"Смена тарифа на {preset['title']}",
-                metadata={
-                    "telegram_id": str(user["telegram_id"]),
-                    "action": "change_plan",
-                    "plan_key": plan_key,
-                },
-            )
-        except RuntimeError:
-            return RedirectResponse("/dashboard?error=Не+удалось+создать+платеж+в+ЮKassa", status_code=303)
-
-        now_iso = now.isoformat()
+        ticket_id = ticket_cursor.lastrowid
         con.execute(
             """
-            INSERT INTO payments (telegram_id, payment_id, amount, plan, key_limit, price_rub, title, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+            INSERT INTO support_messages (ticket_id, telegram_id, sender_role, sender_id, text, created_at)
+            VALUES (?, ?, 'user', ?, ?, ?)
             """,
-            (
-                user["telegram_id"],
-                payment_id,
-                amount_rub,
-                preset["plan"],
-                preset["key_limit"],
-                preset["price_rub"],
-                preset["title"],
-                now_iso,
-            ),
-        )
-        con.execute(
-            """
-            INSERT INTO payment_actions (payment_id, telegram_id, action, target_plan_key, amount_rub, status, created_at, updated_at)
-            VALUES (?, ?, 'change_plan', ?, ?, 'pending', ?, ?)
-            """,
-            (
-                payment_id,
-                user["telegram_id"],
-                plan_key,
-                amount_rub,
-                now_iso,
-                now_iso,
-            ),
+            (ticket_id, user["telegram_id"], user["id"], base_message, now),
         )
         con.commit()
 
-    return RedirectResponse(confirmation_url, status_code=303)
+    success = quote_plus("Заявка на смену тарифа отправлена в поддержку")
+    return RedirectResponse(f"/dashboard?success={success}", status_code=303)
 
 
 @app.post("/dashboard/subscription")
@@ -1208,13 +1194,30 @@ async def dashboard_download_key(request: Request, key_id: int):
     return Response(content=key["payload"], media_type="application/octet-stream", headers=headers)
 
 
-@app.post("/dashboard/support")
-async def dashboard_support(request: Request, message: str = Form(...)):
+@app.post("/dashboard/support/tickets")
+async def dashboard_support_create_ticket(
+    request: Request,
+    subject: str = Form(...),
+    category: str = Form("general"),
+    priority: str = Form("normal"),
+    message: str = Form(...),
+):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
 
+    subject = subject.strip()
     message = message.strip()
+    category = category.strip().lower() or "general"
+    priority = priority.strip().lower() or "normal"
+    if category not in {"general", "billing", "technical", "access"}:
+        return RedirectResponse("/dashboard?error=Неизвестная+категория+обращения", status_code=303)
+    if priority not in {"low", "normal", "high"}:
+        return RedirectResponse("/dashboard?error=Неизвестный+приоритет+обращения", status_code=303)
+    if not subject:
+        return RedirectResponse("/dashboard?error=Тема+обращения+не+может+быть+пустой", status_code=303)
+    if len(subject) > MAX_SUPPORT_SUBJECT_LEN:
+        return RedirectResponse("/dashboard?error=Тема+обращения+слишком+длинная", status_code=303)
     if not message:
         return RedirectResponse("/dashboard?error=Сообщение+в+поддержку+не+может+быть+пустым", status_code=303)
     if len(message) > MAX_SUPPORT_MESSAGE_LEN:
@@ -1224,14 +1227,15 @@ async def dashboard_support(request: Request, message: str = Form(...)):
     with get_db_connection() as con:
         ticket_cursor = con.execute(
             """
-            INSERT INTO support_tickets (telegram_id, status, created_at, closed_at, rating, feedback)
-            VALUES (?, 'open', ?, NULL, NULL, NULL)
+            INSERT INTO support_tickets (
+                telegram_id, status, subject, category, priority, created_at, updated_at, closed_at, rating, feedback
+            )
+            VALUES (?, 'open', ?, ?, ?, ?, ?, NULL, NULL, NULL)
             """,
-            (user["telegram_id"], now),
+            (user["telegram_id"], subject, category, priority, now, now),
         )
         ticket_id = ticket_cursor.lastrowid
         con.execute(
-            """
             INSERT INTO support_messages (ticket_id, telegram_id, sender_role, sender_id, text, created_at)
             VALUES (?, ?, 'user', ?, ?, ?)
             """,
@@ -1239,7 +1243,94 @@ async def dashboard_support(request: Request, message: str = Form(...)):
         )
         con.commit()
 
-    return RedirectResponse("/dashboard?success=Сообщение+в+поддержку+отправлено", status_code=303)
+    return RedirectResponse("/dashboard?success=Обращение+в+поддержку+создано", status_code=303)
+
+
+@app.post("/dashboard/support/tickets/{ticket_id}/reply")
+async def dashboard_support_reply(request: Request, ticket_id: int, message: str = Form(...)):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    message = message.strip()
+    if not message:
+        return RedirectResponse("/dashboard?error=Сообщение+не+может+быть+пустым", status_code=303)
+    if len(message) > MAX_SUPPORT_MESSAGE_LEN:
+        return RedirectResponse("/dashboard?error=Слишком+длинное+сообщение+в+поддержку", status_code=303)
+    now = utcnow().isoformat()
+    with get_db_connection() as con:
+        ticket = con.execute(
+            "SELECT id, status FROM support_tickets WHERE id = ? AND telegram_id = ?",
+            (ticket_id, user["telegram_id"]),
+        ).fetchone()
+        if not ticket:
+            return RedirectResponse("/dashboard?error=Обращение+не+найдено", status_code=303)
+        if ticket["status"] == "closed":
+            return RedirectResponse("/dashboard?error=Обращение+закрыто,+создайте+новое", status_code=303)
+        con.execute(
+            """
+            INSERT INTO support_messages (ticket_id, telegram_id, sender_role, sender_id, text, created_at)
+            VALUES (?, ?, 'user', ?, ?, ?)
+            """,
+            (ticket_id, user["telegram_id"], user["id"], message, now),
+        )
+        con.execute(
+            "UPDATE support_tickets SET status = 'open', updated_at = ? WHERE id = ?",
+            (now, ticket_id),
+        )
+        con.commit()
+    return RedirectResponse("/dashboard?success=Ответ+в+обращение+отправлен", status_code=303)
+
+
+@app.post("/dashboard/support/tickets/{ticket_id}/close")
+async def dashboard_support_close_ticket(request: Request, ticket_id: int):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    now = utcnow().isoformat()
+    with get_db_connection() as con:
+        updated = con.execute(
+            """
+            UPDATE support_tickets
+            SET status = 'closed', closed_at = ?, updated_at = ?
+            WHERE id = ? AND telegram_id = ? AND status != 'closed'
+            """,
+            (now, now, ticket_id, user["telegram_id"]),
+        ).rowcount
+        con.commit()
+    if not updated:
+        return RedirectResponse("/dashboard?error=Обращение+не+найдено+или+уже+закрыто", status_code=303)
+    return RedirectResponse("/dashboard?success=Обращение+закрыто", status_code=303)
+
+
+@app.post("/dashboard/support/tickets/{ticket_id}/rate")
+async def dashboard_support_rate_ticket(
+    request: Request,
+    ticket_id: int,
+    rating: int = Form(...),
+    feedback: str = Form(""),
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if rating < 1 or rating > 5:
+        return RedirectResponse("/dashboard?error=Оценка+должна+быть+от+1+до+5", status_code=303)
+    feedback = feedback.strip()
+    if len(feedback) > MAX_SUPPORT_MESSAGE_LEN:
+        return RedirectResponse("/dashboard?error=Комментарий+к+оценке+слишком+длинный", status_code=303)
+
+    with get_db_connection() as con:
+        updated = con.execute(
+            """
+            UPDATE support_tickets
+            SET rating = ?, feedback = COALESCE(NULLIF(?, ''), feedback)
+            WHERE id = ? AND telegram_id = ? AND status = 'closed'
+            """,
+            (rating, feedback, ticket_id, user["telegram_id"]),
+        ).rowcount
+        con.commit()
+    if not updated:
+        return RedirectResponse("/dashboard?error=Оценку+можно+оставить+только+для+закрытого+обращения", status_code=303)
+    return RedirectResponse("/dashboard?success=Спасибо+за+оценку+поддержки", status_code=303)
 
 
 @app.get("/logout")
@@ -1374,6 +1465,116 @@ async def admin_revoke_user(request: Request, user_id: int = Form(...)):
         con.commit()
 
     return RedirectResponse("/admin/invites", status_code=303)
+
+
+@app.get("/admin/support", response_class=HTMLResponse)
+async def admin_support_page(request: Request, error: str = "", success: str = ""):
+    admin_password = get_admin_password()
+    if not admin_password:
+        return templates.TemplateResponse(
+            request=request,
+            name="admin_support.html",
+            context={"error": f"Нужно задать переменную окружения {ADMIN_PASSWORD_ENV}", "success": "", "is_admin": False, "tickets": [], "messages_by_ticket": {}, "status_label": format_support_status},
+            status_code=503,
+        )
+    if not is_admin(request):
+        return templates.TemplateResponse(
+            request=request,
+            name="admin_support.html",
+            context={"error": error, "success": "", "is_admin": False, "tickets": [], "messages_by_ticket": {}, "status_label": format_support_status},
+        )
+
+    with get_db_connection() as con:
+        tickets = con.execute(
+            """
+            SELECT t.*, u.login
+            FROM support_tickets t
+            LEFT JOIN portal_users u ON u.telegram_id = t.telegram_id
+            ORDER BY CASE t.status
+                WHEN 'open' THEN 0
+                WHEN 'in_progress' THEN 1
+                ELSE 2
+            END, t.updated_at DESC, t.id DESC
+            LIMIT 60
+            """
+        ).fetchall()
+        messages = con.execute(
+            """
+            SELECT m.ticket_id, m.sender_role, m.text, m.created_at, u.login AS sender_login
+            FROM support_messages m
+            LEFT JOIN portal_users u ON u.id = m.sender_id
+            ORDER BY m.id ASC
+            """
+        ).fetchall()
+    messages_by_ticket: dict[int, list[sqlite3.Row]] = {}
+    for msg in messages:
+        messages_by_ticket.setdefault(int(msg["ticket_id"]), []).append(msg)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_support.html",
+        context={
+            "error": error,
+            "success": success,
+            "is_admin": True,
+            "tickets": tickets,
+            "messages_by_ticket": messages_by_ticket,
+            "status_label": format_support_status,
+        },
+    )
+
+
+@app.post("/admin/support/tickets/{ticket_id}/reply")
+async def admin_support_reply(request: Request, ticket_id: int, message: str = Form(...)):
+    if not is_admin(request):
+        return RedirectResponse("/admin/support?error=Нужна+авторизация+админа", status_code=303)
+    message = message.strip()
+    if not message:
+        return RedirectResponse("/admin/support?error=Сообщение+не+может+быть+пустым", status_code=303)
+    if len(message) > MAX_SUPPORT_MESSAGE_LEN:
+        return RedirectResponse("/admin/support?error=Слишком+длинный+ответ", status_code=303)
+    now = utcnow().isoformat()
+    with get_db_connection() as con:
+        ticket = con.execute("SELECT id, telegram_id FROM support_tickets WHERE id = ?", (ticket_id,)).fetchone()
+        if not ticket:
+            return RedirectResponse("/admin/support?error=Обращение+не+найдено", status_code=303)
+        con.execute(
+            """
+            INSERT INTO support_messages (ticket_id, telegram_id, sender_role, sender_id, text, created_at)
+            VALUES (?, ?, 'support', 0, ?, ?)
+            """,
+            (ticket_id, ticket["telegram_id"], message, now),
+        )
+        con.execute(
+            "UPDATE support_tickets SET status = 'in_progress', updated_at = ? WHERE id = ?",
+            (now, ticket_id),
+        )
+        con.commit()
+    return RedirectResponse("/admin/support?success=Ответ+отправлен", status_code=303)
+
+
+@app.post("/admin/support/tickets/{ticket_id}/status")
+async def admin_support_set_status(request: Request, ticket_id: int, status: str = Form(...)):
+    if not is_admin(request):
+        return RedirectResponse("/admin/support?error=Нужна+авторизация+админа", status_code=303)
+    status = status.strip().lower()
+    if status not in {"open", "in_progress", "closed"}:
+        return RedirectResponse("/admin/support?error=Неизвестный+статус+обращения", status_code=303)
+    now = utcnow().isoformat()
+    closed_at = now if status == "closed" else None
+    with get_db_connection() as con:
+        updated = con.execute(
+            """
+            UPDATE support_tickets
+            SET status = ?, closed_at = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (status, closed_at, now, ticket_id),
+        ).rowcount
+        con.commit()
+    if not updated:
+        return RedirectResponse("/admin/support?error=Обращение+не+найдено", status_code=303)
+    return RedirectResponse("/admin/support?success=Статус+обращения+обновлен", status_code=303)
 
 @app.get("/", response_class=HTMLResponse)
 async def root_redirect() -> RedirectResponse:

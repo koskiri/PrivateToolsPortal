@@ -290,6 +290,41 @@
 
         .success { background: var(--ok-bg); color: var(--ok-text); }
         .error { background: var(--err-bg); color: var(--err-text); }
+        .ticket {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px;
+            background: var(--surface-muted);
+            margin-bottom: 10px;
+        }
+        .ticket-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .ticket-meta { color: var(--muted); font-size: 12px; }
+        .ticket-status {
+            font-weight: 700;
+            background: #e2e8f0;
+            border-radius: 999px;
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        .messages { display: grid; gap: 8px; margin: 10px 0; }
+        .msg {
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: #fff;
+            padding: 8px 10px;
+        }
+        .msg.support {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+        }
+        .msg-meta { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
 
         @media (max-width: 720px) {
             .wrap { width: min(980px, 100% - 20px); }
@@ -350,9 +385,8 @@
         <div class="section">
             <h2>1) Сменить тариф</h2>
             <div class="section-note">
-                Смена тарифа применяется после успешной оплаты в ЮKassa.
-                При смене тарифа автоматически добавляется +30 дней.
-                При переходе на более дешевый тариф учитывается возврат за неиспользованные дни.
+                Смена тарифа выполняется только через поддержку.
+                Выберите нужный тариф, оставьте комментарий — поддержка обработает заявку в диалоге ниже.
             </div>
             <form method="post" action="/dashboard/change-plan" class="controls">
                 <select name="plan_key" required>
@@ -360,7 +394,8 @@
                         <option value="{{ key }}">{{ tariff.title }}</option>
                     {% endfor %}
                 </select>
-                <button type="submit">Оплатить и сменить тариф</button>
+                <input type="text" name="comment" maxlength="2000" placeholder="Комментарий к смене тарифа (необязательно)" />
+                <button type="submit">Создать заявку на смену тарифа</button>
             </form>
         </div>
 
@@ -436,13 +471,84 @@
         </div>
 
         <div class="section">
-            <h2>4) Написать в поддержку</h2>
-            <form method="post" action="/dashboard/support">
+            <h2>4) Поддержка</h2>
+            <div class="section-note">Создавайте обращения, ведите переписку и оценивайте качество решения.</div>
+            <form method="post" action="/dashboard/support/tickets">
+                <div class="controls" style="margin-bottom: 8px;">
+                    <input type="text" name="subject" maxlength="160" placeholder="Тема обращения" required />
+                    <select name="category" required>
+                        <option value="general">Общий вопрос</option>
+                        <option value="billing">Оплата и тариф</option>
+                        <option value="technical">Техническая проблема</option>
+                        <option value="access">Доступ в аккаунт</option>
+                    </select>
+                    <select name="priority" required>
+                        <option value="normal">Обычный приоритет</option>
+                        <option value="high">Высокий приоритет</option>
+                        <option value="low">Низкий приоритет</option>
+                    </select>
+                </div>
                 <textarea name="message" maxlength="2000" placeholder="Опишите проблему или вопрос" required></textarea>
                 <div class="controls" style="margin-top: 8px;">
-                    <button type="submit">Отправить в поддержку</button>
+                    <button type="submit">Создать обращение</button>
                 </div>
             </form>
+            <div style="margin-top: 14px;">
+                {% if support_tickets %}
+                    {% for ticket in support_tickets %}
+                        <div class="ticket">
+                            <div class="ticket-head">
+                                <div>
+                                    <div><strong>#{{ ticket.id }} — {{ ticket.subject or 'Без темы' }}</strong></div>
+                                    <div class="ticket-meta">
+                                        Категория: {{ ticket.category or "-" }} · Приоритет: {{ ticket.priority or "-" }} · Обновлено: {{ ticket.updated_at or ticket.created_at }}
+                                    </div>
+                                </div>
+                                <div class="ticket-status">{{ support_status_label(ticket.status) }}</div>
+                            </div>
+                            <div class="messages">
+                                {% for msg in support_messages_by_ticket.get(ticket.id, []) %}
+                                    <div class="msg {{ 'support' if msg.sender_role == 'support' else '' }}">
+                                        <div class="msg-meta">
+                                            {{ "Поддержка" if msg.sender_role == "support" else "Вы" }} · {{ msg.created_at }}
+                                        </div>
+                                        <div>{{ msg.text }}</div>
+                                    </div>
+                                {% else %}
+                                    <div class="section-note">Сообщений пока нет.</div>
+                                {% endfor %}
+                            </div>
+                            {% if ticket.status != 'closed' %}
+                                <form method="post" action="/dashboard/support/tickets/{{ ticket.id }}/reply">
+                                    <textarea name="message" maxlength="2000" placeholder="Ваш ответ поддержке" required></textarea>
+                                    <div class="controls" style="margin-top: 8px;">
+                                        <button type="submit">Отправить ответ</button>
+                                    </div>
+                                </form>
+                                <form method="post" action="/dashboard/support/tickets/{{ ticket.id }}/close" class="controls" style="margin-top: 8px;">
+                                    <button type="submit" class="danger">Закрыть обращение</button>
+                                </form>
+                            {% else %}
+                                <form method="post" action="/dashboard/support/tickets/{{ ticket.id }}/rate">
+                                    <div class="controls" style="margin-bottom: 8px;">
+                                        <select name="rating" required>
+                                            <option value="5">5 — отлично</option>
+                                            <option value="4">4 — хорошо</option>
+                                            <option value="3">3 — нормально</option>
+                                            <option value="2">2 — плохо</option>
+                                            <option value="1">1 — очень плохо</option>
+                                        </select>
+                                        <input type="text" name="feedback" maxlength="2000" placeholder="Комментарий к оценке (необязательно)" />
+                                        <button type="submit">Оценить поддержку</button>
+                                    </div>
+                                </form>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="section-note">У вас пока нет обращений в поддержку.</div>
+                {% endif %}
+            </div>
         </div>
 
         </div>

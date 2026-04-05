@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Админ — поддержка</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; color: #111827; }
+        .wrap { max-width: 1200px; margin: 28px auto; padding: 0 16px; }
+        .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 3px 14px rgba(0,0,0,.06); margin-bottom: 16px; }
+        .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .link { color: #2563eb; text-decoration: none; font-weight: 700; }
+        .error { color: #b91c1c; margin-bottom: 10px; }
+        .success { color: #065f46; margin-bottom: 10px; }
+        .ticket { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin-bottom: 12px; background: #f9fafb; }
+        .ticket-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+        .meta { color: #6b7280; font-size: 13px; margin-top: 4px; }
+        .status { background: #e5e7eb; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700; }
+        .msg-list { margin-top: 10px; display: grid; gap: 8px; }
+        .msg { border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; padding: 8px 10px; }
+        .msg.user { background: #fff; }
+        .msg.support { background: #eff6ff; border-color: #bfdbfe; }
+        .msg-meta { color: #6b7280; font-size: 12px; margin-bottom: 4px; }
+        form { margin-top: 10px; }
+        textarea, select, button { border-radius: 8px; font-size: 14px; }
+        textarea, select { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #d1d5db; background: #fff; }
+        textarea { min-height: 90px; resize: vertical; }
+        button { border: none; padding: 9px 12px; font-weight: 700; color: #fff; background: #2563eb; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="card">
+            <div class="row">
+                <h1 style="margin: 0;">Поддержка: обращения пользователей</h1>
+                <div class="row">
+                    <a class="link" href="/admin/invites">Инвайты</a>
+                    <form method="post" action="/admin/invites/logout" style="margin: 0;">
+                        <button type="submit" style="background:#b91c1c;">Выйти</button>
+                    </form>
+                </div>
+            </div>
+            {% if error %}<div class="error">{{ error }}</div>{% endif %}
+            {% if success %}<div class="success">{{ success }}</div>{% endif %}
+
+            {% if not is_admin %}
+                <div>Для работы с поддержкой сначала войдите на странице <a href="/admin/invites">/admin/invites</a>.</div>
+            {% else %}
+                {% for ticket in tickets %}
+                    <div class="ticket">
+                        <div class="ticket-head">
+                            <div>
+                                <div><strong>#{{ ticket.id }} — {{ ticket.subject or 'Без темы' }}</strong></div>
+                                <div class="meta">
+                                    Пользователь: {{ ticket.login or ('telegram_id=' ~ ticket.telegram_id) }} ·
+                                    Категория: {{ ticket.category or '-' }} ·
+                                    Приоритет: {{ ticket.priority or '-' }} ·
+                                    Создано: {{ ticket.created_at }} ·
+                                    Обновлено: {{ ticket.updated_at or ticket.created_at }}
+                                </div>
+                            </div>
+                            <span class="status">{{ status_label(ticket.status) }}</span>
+                        </div>
+
+                        <div class="msg-list">
+                            {% for msg in messages_by_ticket.get(ticket.id, []) %}
+                                <div class="msg {{ 'support' if msg.sender_role == 'support' else 'user' }}">
+                                    <div class="msg-meta">
+                                        {{ 'Поддержка' if msg.sender_role == 'support' else 'Пользователь' }} · {{ msg.created_at }}
+                                    </div>
+                                    <div>{{ msg.text }}</div>
+                                </div>
+                            {% endfor %}
+                        </div>
+
+                        <form method="post" action="/admin/support/tickets/{{ ticket.id }}/reply">
+                            <textarea name="message" maxlength="2000" placeholder="Ответ пользователю" required></textarea>
+                            <div style="margin-top:8px;"><button type="submit">Отправить ответ</button></div>
+                        </form>
+
+                        <form method="post" action="/admin/support/tickets/{{ ticket.id }}/status" class="row" style="margin-top:8px;">
+                            <select name="status" required>
+                                <option value="open" {% if ticket.status == 'open' %}selected{% endif %}>Открыт</option>
+                                <option value="in_progress" {% if ticket.status == 'in_progress' %}selected{% endif %}>В работе</option>
+                                <option value="closed" {% if ticket.status == 'closed' %}selected{% endif %}>Закрыт</option>
+                            </select>
+                            <button type="submit">Обновить статус</button>
+                        </form>
+                    </div>
+                {% else %}
+                    <div>Пока нет обращений.</div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
