@@ -238,6 +238,12 @@ def ensure_vk_tables(con: sqlite3.Connection) -> None:
             vk_user_id INTEGER,
             FOREIGN KEY(portal_user_id) REFERENCES portal_users(id)
         )
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS vk_subscription_reminders (
+            vk_user_id INTEGER PRIMARY KEY,
+            last_sent_at TEXT NOT NULL
+        )
         """
     )
 
@@ -853,13 +859,205 @@ def vk_api(method: str, payload: dict) -> dict:
 
 
 def send_vk_message(user_id: int, text: str) -> None:
+    send_vk_message_with_keyboard(user_id=user_id, text=text, keyboard=None)
+
+
+def build_vk_keyboard(*, linked: bool) -> str:
+    buttons = []
+    if linked:
+        buttons.append(
+            [
+                {"action": {"type": "text", "label": "📊 Подписка"}, "color": "primary"},
+                {"action": {"type": "text", "label": "🔑 AWG ключ"}, "color": "positive"},
+                {"action": {"type": "text", "label": "🔑 XRay ключ"}, "color": "positive"},
+            ]
+        )
+        buttons.append(
+            [
+                {"action": {"type": "text", "label": "🌐 Кабинет"}, "color": "secondary"},
+                {"action": {"type": "text", "label": "❓ Помощь"}, "color": "secondary"},
+            ]
+        )
+    else:
+        buttons.append(
+            [
+                {"action": {"type": "text", "label": "🔗 Привязать аккаунт"}, "color": "primary"},
+                {"action": {"type": "text", "label": "🌐 Кабинет"}, "color": "secondary"},
+            ]
+        )
+        buttons.append(
+            [
+                {"action": {"type": "text", "label": "❓ Помощь"}, "color": "secondary"},
+            ]
+        )
+    return json.dumps({"one_time": False, "buttons": buttons}, ensure_ascii=False)
+
+
+def send_vk_message_with_keyboard(user_id: int, text: str, keyboard: Optional[str]) -> None:
+    payload = {
+        "user_id": user_id,
+        "random_id": secrets.randbelow(2_147_483_647),
+        "message": text[:4000],
+    }
+    if keyboard:
+        payload["keyboard"] = keyboard
     vk_api(
         "messages.send",
-        {
-            "user_id": user_id,
-            "random_id": secrets.randbelow(2_147_483_647),
-            "message": text[:4000],
-        },
+        payload,
+    )
+
+
+def get_vk_linked_account(con: sqlite3.Connection, vk_user_id: int) -> Optional[sqlite3.Row]:
+    return con.execute(
+        """
+        SELECT l.vk_user_id, l.telegram_id, l.portal_user_id, u.login
+        FROM vk_links l
+        JOIN portal_users u ON u.id = l.portal_user_id
+        WHERE l.vk_user_id = ?
+        """,
+        (vk_user_id,),
+    ).fetchone()
+
+
+def get_subscription_stats(con: sqlite3.Connection, telegram_id: int) -> Optional[sqlite3.Row]:
+    return con.execute(
+        """
+        SELECT s.active_until, s.key_limit, s.title, s.plan,
+               COALESCE(k.active_keys, 0) AS active_keys
+        FROM subscriptions s
+        LEFT JOIN (
+            SELECT telegram_id, COUNT(*) AS active_keys
+            FROM vpn_keys
+            WHERE revoked_at IS NULL
+            GROUP BY telegram_id
+        ) k ON k.telegram_id = s.telegram_id
+        WHERE s.telegram_id = ?
+        """,
+        (telegram_id,),
+    ).fetchone()
+
+
+def maybe_send_vk_subscription_reminder(con: sqlite3.Connection, vk_user_id: int, telegram_id: int) -> None:
+    stats = get_subscription_stats(con, telegram_id)
+    if not stats:
+        return
+    try:
+        active_until = datetime.fromisoformat(stats["active_until"])
+    except Exception:
+        return
+    now = utcnow()
+    if active_until <= now:
+        return
+
+    days_left = (active_until - now).total_seconds() / 86400
+    if days_left > 3:
+        return
+
+    reminder = con.execute(
+        """
+        SELECT last_sent_at
+        FROM vk_subscription_reminders
+        WHERE vk_user_id = ?
+        """,
+        (vk_user_id,),
+    ).fetchone()
+    if reminder:
+        try:
+            last_sent_at = datetime.fromisoformat(reminder["last_sent_at"])
+            if (now - last_sent_at) < timedelta(hours=24):
+                return
+        except Exception:
+            pass
+
+    until_local = active_until.astimezone().strftime("%d.%m.%Y %H:%M")
+    send_vk_message_with_keyboard(
+        vk_user_id,
+        (
+            "⏰ Напоминание: ваша подписка скоро закончится.\n"
+            f"Действует до: {until_local}\n"
+            "Продлить подписку можно в личном кабинете."
+        ),
+        keyboard=build_vk_keyboard(linked=True),
+    )
+    now_iso = now.isoformat()
+    con.execute(
+        """
+        INSERT INTO vk_subscription_reminders (vk_user_id, last_sent_at)
+        VALUES (?, ?)
+        ON CONFLICT(vk_user_id) DO UPDATE SET last_sent_at = excluded.last_sent_at
+        """,
+        (vk_user_id, now_iso),
+    )
+
+
+def build_vk_subscription_status_text(stats: sqlite3.Row) -> str:
+    try:
+        active_until = datetime.fromisoformat(stats["active_until"])
+        now = utcnow()
+        seconds_left = max(0, int((active_until - now).total_seconds()))
+        days_left = seconds_left // 86400
+        hours_left = (seconds_left % 86400) // 3600
+        until_local = active_until.astimezone().strftime("%d.%m.%Y %H:%M")
+        expiry_line = f"До: {until_local} (осталось ~{days_left} дн. {hours_left} ч.)"
+    except Exception:
+        expiry_line = "До: неизвестно"
+    return (
+        "📊 Статус подписки:\n"
+        f"Тариф: {stats['title'] or stats['plan']}\n"
+        f"{expiry_line}\n"
+        f"Ключи: {int(stats['active_keys'] or 0)}/{int(stats['key_limit'] or 0)}"
+    )
+
+
+def create_key_for_vk_user(con: sqlite3.Connection, telegram_id: int, key_kind: str) -> tuple[bool, str]:
+    stats = get_subscription_stats(con, telegram_id)
+    if not stats:
+        return False, "Сначала подключите подписку в личном кабинете."
+
+    now = utcnow()
+    try:
+        active_until = datetime.fromisoformat(stats["active_until"])
+    except Exception:
+        return False, "Не удалось проверить срок подписки."
+    if active_until <= now:
+        deactivated_count, failed_count = deactivate_user_keys(con, telegram_id)
+        con.commit()
+        if failed_count:
+            return False, "Подписка истекла. Не все старые ключи удалось деактивировать, попробуйте позже."
+        return False, f"Подписка истекла. Ключей деактивировано: {deactivated_count}. Продлите подписку."
+    if int(stats["active_keys"] or 0) >= int(stats["key_limit"] or 0):
+        return False, "Достигнут лимит ключей для вашего тарифа."
+
+    key_title = f"{'Amnezia WG' if key_kind == 'awg' else 'XRay'} ключ (VK)"
+    try:
+        payload, vps_id, peer_pub, peer_ip = create_vpn_key_on_vps(
+            kind=key_kind,
+            title=key_title,
+            telegram_id=telegram_id,
+        )
+    except RuntimeError as exc:
+        return False, f"Не удалось создать ключ: {exc}"
+
+    created_at = now.isoformat()
+    cur = con.execute(
+        """
+        INSERT INTO vpn_keys (telegram_id, kind, title, payload, created_at, revoked_at, vps_id, peer_pub, peer_ip)
+        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)
+        """,
+        (telegram_id, key_kind, key_title, payload, created_at, vps_id, peer_pub, peer_ip),
+    )
+    key_id = int(cur.lastrowid)
+    con.commit()
+
+    if len(payload) > 3500:
+        payload_preview = payload[:3200]
+        payload_suffix = "\n\n…(ключ длинный, остаток скачайте в кабинете)"
+    else:
+        payload_preview = payload
+        payload_suffix = ""
+    return (
+        True,
+        f"✅ Ключ создан (ID {key_id}, тип {key_kind.upper()}).\n\n{payload_preview}{payload_suffix}",
     )
 
 
@@ -883,7 +1081,11 @@ def handle_vk_message_new(event: dict) -> None:
             ok, message_text = consume_vk_link_code(con, code, vk_user_id)
             con.commit()
 
-        send_vk_message(vk_user_id, message_text)
+        send_vk_message_with_keyboard(
+            vk_user_id,
+            message_text,
+            keyboard=build_vk_keyboard(linked=ok),
+        )
         return
 
     cabinet_url = get_app_base_url()
@@ -892,39 +1094,90 @@ def handle_vk_message_new(event: dict) -> None:
     else:
         cabinet_url = "Ссылка на кабинет пока не настроена"
 
-    if text in {"привет", "start", "/start", "начать"}:
-        send_vk_message(
+    with get_db_connection() as con:
+        linked_account = get_vk_linked_account(con, vk_user_id)
+        if linked_account:
+            maybe_send_vk_subscription_reminder(con, vk_user_id, int(linked_account["telegram_id"]))
+            con.commit()
+
+    if text in {"привет", "start", "/start", "начать", "меню"}:
+        if linked_account:
+            send_vk_message_with_keyboard(
+                vk_user_id,
+                "Привет! Я бот вашего VPN-кабинета. Выберите действие на кнопках 👇",
+                keyboard=build_vk_keyboard(linked=True),
+            )
+        else:
+            send_vk_message_with_keyboard(
+                vk_user_id,
+                "Привет! Чтобы пользоваться ботом, сначала привяжите ВК-аккаунт.\n"
+                "Отправьте: привязать ABC123 (код выдается в кабинете сайта).",
+                keyboard=build_vk_keyboard(linked=False),
+            )
+        return
+
+    if text in {"кабинет", "сайт", "логин", "🌐 кабинет"}:
+        send_vk_message_with_keyboard(vk_user_id, f"Открыть кабинет: {cabinet_url}", keyboard=build_vk_keyboard(linked=linked_account is not None))
+        return
+
+    if text in {"помощь", "help", "/help", "❓ помощь", "🔗 привязать аккаунт"}:
+        send_vk_message_with_keyboard(
             vk_user_id,
-            "Привет! Я бот кабинета VPN.\n\n"
-            "Если ваш аккаунт ВК еще не привязан, зайдите в кабинет на сайте и получите код привязки.\n"
-            "Потом отправьте мне: привязать ABC123\n\n"
-            "Команды:\n"
-            "• кабинет\n"
-            "• помощь"
+            "Возможности бота:\n"
+            "• Кнопки для удобной навигации\n"
+            "• Напоминания о скором окончании подписки\n"
+            "• Генерация ключей AWG/XRay\n\n"
+            "Если аккаунт не привязан, отправьте: привязать ABC123",
+            keyboard=build_vk_keyboard(linked=linked_account is not None),
         )
         return
 
-    if text in {"кабинет", "сайт", "логин"}:
-        send_vk_message(vk_user_id, f"Открыть кабинет: {cabinet_url}")
-        return
-
-    if text in {"помощь", "help", "/help"}:
-        send_vk_message(
+    if text in {"📊 подписка"}:
+        if not linked_account:
+            send_vk_message_with_keyboard(
+                vk_user_id,
+                "Сначала привяжите аккаунт: отправьте `привязать ABC123`.",
+                keyboard=build_vk_keyboard(linked=False),
+            )
+            return
+        with get_db_connection() as con:
+            stats = get_subscription_stats(con, int(linked_account["telegram_id"]))
+        if not stats:
+            send_vk_message_with_keyboard(
+                vk_user_id,
+                "Подписка не найдена. Оформите ее в личном кабинете.",
+                keyboard=build_vk_keyboard(linked=True),
+            )
+            return
+        send_vk_message_with_keyboard(
             vk_user_id,
-            "Доступные команды:\n"
-            "• кабинет\n"
-            "• помощь\n"
-            "• привязать ABC123"
+            build_vk_subscription_status_text(stats),
+            keyboard=build_vk_keyboard(linked=True),
         )
         return
 
-    send_vk_message(
+    if text in {"🔑 awg ключ", "🔑 xray ключ"}:
+        if not linked_account:
+            send_vk_message_with_keyboard(
+                vk_user_id,
+                "Сначала привяжите аккаунт: отправьте `привязать ABC123`.",
+                keyboard=build_vk_keyboard(linked=False),
+            )
+            return
+        key_kind = "awg" if "awg" in text else "xray"
+        with get_db_connection() as con:
+            ok, result_text = create_key_for_vk_user(con, int(linked_account["telegram_id"]), key_kind)
+        send_vk_message_with_keyboard(
+            vk_user_id,
+            result_text,
+            keyboard=build_vk_keyboard(linked=True),
+        )
+        return
+
+    send_vk_message_with_keyboard(
         vk_user_id,
-        "Пока я понимаю только:\n"
-        "• привет\n"
-        "• кабинет\n"
-        "• помощь\n"
-        "• привязать ABC123"
+        "Я не понял запрос. Нажмите кнопку ниже 👇",
+        keyboard=build_vk_keyboard(linked=linked_account is not None),
     )
 
 

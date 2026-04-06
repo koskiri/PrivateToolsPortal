@@ -375,6 +375,49 @@
             flex-wrap: wrap;
             gap: 8px;
         }
+        .vk-action-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .vk-action-group > button,
+        .vk-action-group > a {
+            min-height: 44px;
+        }
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            border-radius: 10px;
+            border: 1px solid var(--primary);
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+            padding: 0 14px;
+            transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+            text-decoration: none;
+            box-shadow: 0 8px 18px rgba(37, 99, 235, .25);
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 10px 20px rgba(30, 64, 175, .3);
+        }
+        .btn-outline {
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text);
+            box-shadow: none;
+        }
+        .btn-outline:hover {
+            background: #eef2ff;
+            color: #1e3a8a;
+            border-color: #bfdbfe;
+            box-shadow: 0 8px 18px rgba(30, 64, 175, .12);
+        }
 
         @media (max-width: 720px) {
             .wrap { width: min(980px, 100% - 20px); }
@@ -639,11 +682,13 @@
 
             <div class="vk-code" id="vk-code">—</div>
             
-            <div class="modal-actions">
-                <button id="vk-copy-btn">Скопировать команду</button>
-                <a id="vk-bot-link-action" href="{{ vk_bot_link or '#' }}" target="_blank" rel="noopener noreferrer" class="btn-primary" {% if not vk_bot_link %}style="display:none;"{% endif %}>
-                    Открыть бота VK
-                </a>
+             <div class="modal-actions">
+                <div class="vk-action-group">
+                    <button id="vk-copy-btn" class="btn-primary btn-outline">Скопировать команду</button>
+                    <a id="vk-bot-link-action" href="{{ vk_bot_link or '#' }}" target="_blank" rel="noopener noreferrer" class="btn-primary" {% if not vk_bot_link %}style="display:none;"{% endif %}>
+                        Открыть бота VK
+                    </a>
+                </div>
                 <button id="vk-close-btn" class="danger">Закрыть</button>
             </div>
         </div>
