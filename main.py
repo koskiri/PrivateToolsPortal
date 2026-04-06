@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 from urllib import error as urllib_error
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 from urllib import request as urllib_request
 from dotenv import load_dotenv
 load_dotenv()
@@ -72,6 +72,8 @@ VPS_ISSUER_URL_ENV = "VPS_ISSUER_URL"
 VPS_ISSUER_TOKEN_ENV = "VPS_ISSUER_TOKEN"
 VK_CONFIRMATION_CODE_ENV = "VK_CONFIRMATION_CODE"
 VK_SECRET_ENV = "VK_SECRET"
+VK_TOKEN_ENV = "VK_TOKEN"
+APP_BASE_URL_ENV = "APP_BASE_URL"
 
 app = FastAPI(title="PrivateToolsPortal")
 
@@ -146,6 +148,7 @@ def ensure_auth_tables() -> None:
         migrate_telegram_columns(con)
         ensure_support_tables(con)
         ensure_billing_tables(con)
+        ensure_vk_tables(con)
 
 
 def ensure_support_tables(con: sqlite3.Connection) -> None:
@@ -210,6 +213,32 @@ def ensure_billing_tables(con: sqlite3.Connection) -> None:
         """
     )
 
+def ensure_vk_tables(con: sqlite3.Connection) -> None:
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS vk_links (
+            vk_user_id INTEGER PRIMARY KEY,
+            portal_user_id INTEGER NOT NULL UNIQUE,
+            telegram_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(portal_user_id) REFERENCES portal_users(id)
+        )
+        """
+    )
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS vk_link_codes (
+            code TEXT PRIMARY KEY,
+            portal_user_id INTEGER NOT NULL,
+            telegram_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            vk_user_id INTEGER,
+            FOREIGN KEY(portal_user_id) REFERENCES portal_users(id)
+        )
+        """
+    )
 
 def migrate_telegram_columns(con: sqlite3.Connection) -> None:
     users_telegram_notnull = con.execute("PRAGMA table_info(portal_users)").fetchall()
@@ -666,6 +695,222 @@ def get_vk_confirmation_code() -> str:
 def get_vk_secret() -> str:
     return os.getenv(VK_SECRET_ENV, "").strip()
 
+def get_vk_token() -> str:
+    return os.getenv(VK_TOKEN_ENV, "").strip()
+
+
+def get_app_base_url() -> str:
+    return os.getenv(APP_BASE_URL_ENV, "").strip().rstrip("/")
+
+def generate_vk_link_code() -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(6))
+
+
+def create_vk_link_code(con: sqlite3.Connection, portal_user_id: int, telegram_id: int) -> str:
+    now = utcnow()
+    expires_at = now + timedelta(minutes=10)
+
+    # Удаляем старые неиспользованные коды пользователя
+    con.execute(
+        """
+        DELETE FROM vk_link_codes
+        WHERE portal_user_id = ? AND used_at IS NULL
+        """,
+        (portal_user_id,),
+    )
+
+    code = generate_vk_link_code()
+    con.execute(
+        """
+        INSERT INTO vk_link_codes (code, portal_user_id, telegram_id, created_at, expires_at, used_at, vk_user_id)
+        VALUES (?, ?, ?, ?, ?, NULL, NULL)
+        """,
+        (code, portal_user_id, telegram_id, now.isoformat(), expires_at.isoformat()),
+    )
+    return code
+
+
+def get_vk_link_by_portal_user(con: sqlite3.Connection, portal_user_id: int) -> Optional[sqlite3.Row]:
+    return con.execute(
+        """
+        SELECT *
+        FROM vk_links
+        WHERE portal_user_id = ?
+        """,
+        (portal_user_id,),
+    ).fetchone()
+
+
+def consume_vk_link_code(con: sqlite3.Connection, code: str, vk_user_id: int) -> tuple[bool, str]:
+    row = con.execute(
+        """
+        SELECT *
+        FROM vk_link_codes
+        WHERE code = ?
+        """,
+        (code,),
+    ).fetchone()
+
+    if not row:
+        return False, "Код привязки не найден."
+
+    if row["used_at"] is not None:
+        return False, "Этот код уже использован."
+
+    try:
+        expires_at = datetime.fromisoformat(row["expires_at"])
+    except Exception:
+        return False, "Код привязки поврежден."
+
+    if expires_at <= utcnow():
+        return False, "Срок действия кода истек. Создайте новый код в кабинете."
+
+    existing_vk = con.execute(
+        """
+        SELECT * FROM vk_links
+        WHERE vk_user_id = ?
+        """,
+        (vk_user_id,),
+    ).fetchone()
+    if existing_vk:
+        return False, "Этот аккаунт ВК уже привязан."
+
+    existing_user_link = con.execute(
+        """
+        SELECT * FROM vk_links
+        WHERE portal_user_id = ?
+        """,
+        (row["portal_user_id"],),
+    ).fetchone()
+    if existing_user_link:
+        return False, "К этому аккаунту сайта уже привязан ВК."
+
+    now_iso = utcnow().isoformat()
+    con.execute(
+        """
+        INSERT INTO vk_links (vk_user_id, portal_user_id, telegram_id, created_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (vk_user_id, row["portal_user_id"], row["telegram_id"], now_iso),
+    )
+    con.execute(
+        """
+        UPDATE vk_link_codes
+        SET used_at = ?, vk_user_id = ?
+        WHERE code = ?
+        """,
+        (now_iso, vk_user_id, code),
+    )
+    return True, "Аккаунт ВК успешно привязан."
+
+
+def vk_api(method: str, payload: dict) -> dict:
+    token = get_vk_token()
+    if not token:
+        raise RuntimeError("VK token is not configured")
+
+    data = dict(payload)
+    data["access_token"] = token
+    data["v"] = "5.199"
+
+    req = urllib_request.Request(
+        f"https://api.vk.com/method/{method}",
+        data=urlencode(data).encode("utf-8"),
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+
+    try:
+        with urllib_request.urlopen(req, timeout=15) as resp:
+            raw = resp.read().decode("utf-8")
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"VK API HTTP error: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise RuntimeError("VK API unavailable") from exc
+
+    body = json.loads(raw)
+    if "error" in body:
+        raise RuntimeError(f"VK API error: {body['error']}")
+    return body.get("response", {})
+
+
+def send_vk_message(user_id: int, text: str) -> None:
+    vk_api(
+        "messages.send",
+        {
+            "user_id": user_id,
+            "random_id": secrets.randbelow(2_147_483_647),
+            "message": text[:4000],
+        },
+    )
+
+
+def handle_vk_message_new(event: dict) -> None:
+    obj = event.get("object") or {}
+    message = obj.get("message") or {}
+
+    vk_user_id = int(message.get("from_id") or 0)
+    text = (message.get("text") or "").strip().lower()
+
+    if vk_user_id <= 0:
+        return
+
+    if text.startswith("привязать "):
+        code = text.replace("привязать", "", 1).strip().upper()
+        if not code:
+            send_vk_message(vk_user_id, "Укажите код: привязать ABC123")
+            return
+
+        with get_db_connection() as con:
+            ok, message_text = consume_vk_link_code(con, code, vk_user_id)
+            con.commit()
+
+        send_vk_message(vk_user_id, message_text)
+        return
+
+    cabinet_url = get_app_base_url()
+    if cabinet_url:
+        cabinet_url = f"{cabinet_url}/login"
+    else:
+        cabinet_url = "Ссылка на кабинет пока не настроена"
+
+    if text in {"привет", "start", "/start", "начать"}:
+        send_vk_message(
+            vk_user_id,
+            "Привет! Я бот кабинета VPN.\n\n"
+            "Если ваш аккаунт ВК еще не привязан, зайдите в кабинет на сайте и получите код привязки.\n"
+            "Потом отправьте мне: привязать ABC123\n\n"
+            "Команды:\n"
+            "• кабинет\n"
+            "• помощь"
+        )
+        return
+
+    if text in {"кабинет", "сайт", "логин"}:
+        send_vk_message(vk_user_id, f"Открыть кабинет: {cabinet_url}")
+        return
+
+    if text in {"помощь", "help", "/help"}:
+        send_vk_message(
+            vk_user_id,
+            "Доступные команды:\n"
+            "• кабинет\n"
+            "• помощь\n"
+            "• привязать ABC123"
+        )
+        return
+
+    send_vk_message(
+        vk_user_id,
+        "Пока я понимаю только:\n"
+        "• привет\n"
+        "• кабинет\n"
+        "• помощь\n"
+        "• привязать ABC123"
+    )
+
 
 def is_admin(request: Request) -> bool:
     admin_password = get_admin_password()
@@ -946,6 +1191,28 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             "support_status_label": format_support_status,
         },
     )
+
+@app.post("/dashboard/vk-link")
+async def dashboard_vk_link(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    with get_db_connection() as con:
+        existing_link = get_vk_link_by_portal_user(con, int(user["id"]))
+        if existing_link:
+            return RedirectResponse(
+                "/dashboard?error=К+этому+аккаунту+уже+привязан+ВК",
+                status_code=303,
+            )
+
+        code = create_vk_link_code(con, int(user["id"]), int(user["telegram_id"]))
+        con.commit()
+
+    success_text = quote_plus(
+        f"Код+для+привязки+ВК:+{code}.+Напишите+боту+в+ВК:+привязать+{code}"
+    )
+    return RedirectResponse(f"/dashboard?success={success_text}", status_code=303)
 
 @app.post("/dashboard/change-plan")
 async def dashboard_change_plan(
@@ -1774,6 +2041,13 @@ async def vk_callback(request: Request):
         if not code:
             return PlainTextResponse("VK confirmation code is not configured", status_code=500)
         return PlainTextResponse(code)
+
+    if event_type == "message_new":
+        try:
+            handle_vk_message_new(body)
+        except Exception as exc:
+            print(f"[vk_callback] message_new error: {exc}")
+        return PlainTextResponse("ok")
 
     return PlainTextResponse("ok")
 

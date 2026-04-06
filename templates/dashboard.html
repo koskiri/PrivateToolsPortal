@@ -416,6 +416,17 @@
         </div>
 
         <div class="section">
+            <h2>Привязка ВК</h2>
+            <div class="section-note">
+                Привязать ВК можно только из личного кабинета.
+                Нажмите кнопку ниже, сайт создаст одноразовый код на 10 минут.
+                Потом отправьте этот код боту ВК в формате:
+                <strong>привязать ABC123</strong>
+            </div>
+            <button type="button" id="vk-link-btn">Привязать VK</button>
+        </div>
+
+        <div class="section">
             <div class="section-head">
                 <h2 style="margin: 0;">Управление ключами</h2>
                 <div class="switcher">
@@ -473,7 +484,6 @@
         <div class="section">
             <h2>Поддержка</h2>
             <div class="section-note">Создавайте обращения, ведите переписку и оценивайте качество решения.</div>
-            <form method="post" action="dashboard/support/tickets"></form>
             <form method="post" action="{{ request.url_for('dashboard_support_create_ticket') }}">
                 <div class="controls" style="margin-bottom: 8px;">
                     <input type="text" name="subject" maxlength="160" placeholder="Тема обращения" required />
@@ -585,5 +595,25 @@
             });
         });
     </script>
+    <div id="vk-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Привязка VK</h2>
+
+            <p class="modal-text">
+                1. Скопируйте код ниже<br>
+                2. Напишите его боту ВК<br>
+                3. Готово 🎉
+            </p>
+
+            <div class="vk-code" id="vk-code">—</div>
+
+            <a id="vk-bot-link" href="#" target="_blank" class="vk-link">
+                Открыть бота ВК
+            </a>
+
+            <button id="vk-copy-btn">Скопировать код</button>
+            <button id="vk-close-btn" class="danger">Закрыть</button>
+        </div>
+    </div>
 </body>
 </html>
