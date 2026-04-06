@@ -217,6 +217,55 @@ def ssh_cmd(vps: dict, remote_cmd: str) -> str:
 
     return out
 
+def ssh_cmd_full(vps: dict, remote_cmd: str, timeout: int = 20) -> tuple[int, str, str]:
+    key_path = vps["ssh_key"]
+
+    if "BEGIN" in str(key_path):
+        raise RuntimeError("ssh_key должен быть путем к файлу, а не PEM-строкой")
+
+    if not os.path.exists(key_path):
+        raise RuntimeError(f"SSH key not found: {key_path}")
+
+    args = [
+        "ssh",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=8",
+        "-o", "ServerAliveInterval=5",
+        "-o", "ServerAliveCountMax=1",
+        "-p", str(vps["ssh_port"]),
+        "-i", key_path,
+        f'{vps["ssh_user"]}@{vps["host"]}',
+        remote_cmd,
+    ]
+
+    try:
+        p = subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"SSH timeout ({timeout}s)")
+
+    out = (p.stdout or "").strip()
+    err = (p.stderr or "").strip()
+    return p.returncode, out, err
+
+
+def restart_xray_reality(vps: dict) -> None:
+    restart_cmd = (
+        "sudo systemctl restart xray-reality.service && "
+        "sudo systemctl is-active xray-reality.service"
+    )
+    code, out, err = ssh_cmd_full(vps, restart_cmd, timeout=30)
+    if code != 0 or out.strip() != "active":
+        raise RuntimeError(
+            f"Не удалось перезапустить xray-reality.service: {(err or out or f'code={code}')[:2000]}"
+        )
 
 def create_awg_peer(vps: dict, name: str) -> dict:
     cmd = (
@@ -275,6 +324,8 @@ def create_xray_client(vps: dict, name: str) -> dict:
     if "OK" not in out:
         raise RuntimeError(f"xray-bot failed: {out[:2000]}")
 
+    restart_xray_reality(vps)
+
     endpoint = vps["endpoint"]
     port = vps.get("reality_port") or vps.get("xray_port") or 8443
     public_key = vps.get("reality_public_key")
@@ -307,11 +358,13 @@ def create_xray_client(vps: dict, name: str) -> dict:
 def revoke_xray_client(vps: dict, client_id: Optional[str]) -> None:
     if not client_id:
         raise RuntimeError("Missing XRay client id")
+
     cmd = (
         f"(/usr/local/bin/xray-bot delete {client_id})"
         f" || (/usr/local/bin/xray-bot remove {client_id})"
     )
     ssh_cmd(vps, f"bash -lc {json.dumps(cmd)}")
+    restart_xray_reality(vps)
 
 @app.get("/health")
 def health():
