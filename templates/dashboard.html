@@ -608,8 +608,7 @@
                 {% endif %}
             </div>
         </div>
-
-        <</div>
+    </div>
     <div id="vk-modal" class="modal hidden">
         <div class="modal-content">
             <h2>Привязка VK</h2>
@@ -622,7 +621,7 @@
 
             <div class="vk-code" id="vk-code">—</div>
 
-            <a id="vk-bot-link" href="{{ vk_bot_link or '#' }}" target="_blank" class="vk-link" {% if not vk_bot_link %}style="display:none;"{% endif %}>
+            <a id="vk-bot-link" href="{{ vk_bot_link or '#' }}" target="_blank" rel="noopener noreferrer" class="vk-link" {% if not vk_bot_link %}style="display:none;"{% endif %}>
                 Открыть бота ВК
             </a>
 
@@ -635,12 +634,20 @@
     <script>
         const panelButtons = document.querySelectorAll("[data-panel-target]");
         const panels = document.querySelectorAll(".key-panel");
+        const fallbackVkBotLink = "";
 
         panelButtons.forEach((btn) => {
             btn.addEventListener("click", () => {
                 const target = btn.dataset.panelTarget;
-                panels.forEach((panel) => panel.classList.toggle("hidden", panel.id !== target));
-                panelButtons.forEach((button) => button.classList.toggle("active", button === btn));
+                if (!target) return;
+
+                panels.forEach((panel) => {
+                    panel.classList.toggle("hidden", panel.id !== target);
+                });
+
+                panelButtons.forEach((button) => {
+                    button.classList.toggle("active", button === btn);
+                });
             });
         });
 
@@ -648,18 +655,31 @@
         copyButtons.forEach((btn) => {
             btn.addEventListener("click", async () => {
                 const targetId = btn.dataset.copyTarget;
+                if (!targetId) return;
+
                 const payloadField = document.getElementById(targetId);
-                if (!payloadField) return;
+                if (
+                    !(payloadField instanceof HTMLTextAreaElement) &&
+                    !(payloadField instanceof HTMLInputElement)
+                ) {
+                    return;
+                }
+
                 try {
                     await navigator.clipboard.writeText(payloadField.value);
                     const previousText = btn.textContent;
                     btn.textContent = "Скопировано ✓";
-                    setTimeout(() => { btn.textContent = previousText; }, 1400);
+                    setTimeout(() => {
+                        btn.textContent = previousText || "Копировать ключ";
+                    }, 1400);
                 } catch (e) {
                     payloadField.select();
                     document.execCommand("copy");
+                    const previousText = btn.textContent;
                     btn.textContent = "Скопировано ✓";
-                    setTimeout(() => { btn.textContent = "Копировать ключ"; }, 1400);
+                    setTimeout(() => {
+                        btn.textContent = previousText || "Копировать ключ";
+                    }, 1400);
                 }
             });
         });
@@ -671,59 +691,97 @@
         const vkCopyBtn = document.getElementById("vk-copy-btn");
         const vkCloseBtn = document.getElementById("vk-close-btn");
 
-        const hideVkModal = () => vkModal.classList.add("hidden");
-        const showVkModal = () => vkModal.classList.remove("hidden");
-
-        vkLinkBtn?.addEventListener("click", async () => {
-            const previousText = vkLinkBtn.textContent;
-            vkLinkBtn.disabled = true;
-            vkLinkBtn.textContent = "Создаем код...";
-            try {
-                const response = await fetch("/dashboard/vk-link", {
-                    method: "POST",
-                    headers: { "X-Requested-With": "XMLHttpRequest" },
-                    credentials: "same-origin",
-                });
-                const payload = await response.json();
-                if (!response.ok || !payload.ok) {
-                    throw new Error(payload.error || "Не удалось получить код привязки.");
-                }
-                vkCode.textContent = payload.code || "—";
-                const botLink = payload.vk_bot_link || {{ (vk_bot_link or '')|tojson }};
-                if (botLink) {
-                    vkBotLink.href = botLink;
-                    vkBotLink.style.display = "inline-flex";
-                } else {
-                    vkBotLink.href = "#";
-                    vkBotLink.style.display = "none";
-                }
-                showVkModal();
-            } catch (error) {
-                alert(error.message || "Не удалось получить код привязки.");
-            } finally {
-                vkLinkBtn.disabled = false;
-                vkLinkBtn.textContent = previousText;
+        const hideVkModal = () => {
+            if (vkModal) {
+                vkModal.classList.add("hidden");
             }
-        });
+        };
 
-        vkCopyBtn?.addEventListener("click", async () => {
-            const code = (vkCode.textContent || "").trim();
-            if (!code || code === "—") return;
-            const command = `привязать ${code}`;
-            try {
-                await navigator.clipboard.writeText(command);
-                const previousText = vkCopyBtn.textContent;
-                vkCopyBtn.textContent = "Скопировано ✓";
-                setTimeout(() => { vkCopyBtn.textContent = previousText; }, 1400);
-            } catch (error) {
-                alert("Не удалось скопировать код.");
+        const showVkModal = () => {
+            if (vkModal) {
+                vkModal.classList.remove("hidden");
             }
-        });
+        };
 
-        vkCloseBtn?.addEventListener("click", hideVkModal);
-        vkModal?.addEventListener("click", (event) => {
-            if (event.target === vkModal) hideVkModal();
-        });
+        if (vkLinkBtn instanceof HTMLButtonElement) {
+            vkLinkBtn.addEventListener("click", async () => {
+                const previousText = vkLinkBtn.textContent;
+                vkLinkBtn.disabled = true;
+                vkLinkBtn.textContent = "Создаем код...";
+
+                try {
+                    const response = await fetch("/dashboard/vk-link", {
+                        method: "POST",
+                        headers: { "X-Requested-With": "XMLHttpRequest" },
+                        credentials: "same-origin"
+                    });
+
+                    const payload = await response.json();
+
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || "Не удалось получить код привязки.");
+                    }
+
+                    if (vkCode) {
+                        vkCode.textContent = payload.code || "—";
+                    }
+
+                    const botLink = payload.vk_bot_link || fallbackVkBotLink;
+
+                    if (vkBotLink instanceof HTMLAnchorElement) {
+                        if (botLink) {
+                            vkBotLink.href = botLink;
+                            vkBotLink.style.display = "inline-flex";
+                        } else {
+                            vkBotLink.href = "#";
+                            vkBotLink.style.display = "none";
+                        }
+                    }
+
+                    showVkModal();
+                } catch (error) {
+                    const message = error instanceof Error
+                        ? error.message
+                        : "Не удалось получить код привязки.";
+                    alert(message);
+                } finally {
+                    vkLinkBtn.disabled = false;
+                    vkLinkBtn.textContent = previousText || "Привязать VK";
+                }
+            });
+        }
+
+        if (vkCopyBtn instanceof HTMLButtonElement) {
+            vkCopyBtn.addEventListener("click", async () => {
+                const code = (vkCode?.textContent || "").trim();
+                if (!code || code === "—") return;
+
+                const command = `привязать ${code}`;
+
+                try {
+                    await navigator.clipboard.writeText(command);
+                    const previousText = vkCopyBtn.textContent;
+                    vkCopyBtn.textContent = "Скопировано ✓";
+                    setTimeout(() => {
+                        vkCopyBtn.textContent = previousText || "Скопировать команду";
+                    }, 1400);
+                } catch (error) {
+                    alert("Не удалось скопировать код.");
+                }
+            });
+        }
+
+        if (vkCloseBtn instanceof HTMLButtonElement) {
+            vkCloseBtn.addEventListener("click", hideVkModal);
+        }
+
+        if (vkModal) {
+            vkModal.addEventListener("click", (event) => {
+                if (event.target === vkModal) {
+                    hideVkModal();
+                }
+            });
+        }
     </script>
 </body>
 </html>
