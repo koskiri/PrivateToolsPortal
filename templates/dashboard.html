@@ -711,6 +711,7 @@
                 const previousText = vkLinkBtn.textContent;
                 vkLinkBtn.disabled = true;
                 vkLinkBtn.textContent = "Создаем код...";
+                const data = await response.json();
 
                 try {
                     const response = await fetch("/dashboard/vk-link", {
