@@ -325,13 +325,65 @@
             border-color: #bfdbfe;
         }
         .msg-meta { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+        .modal.hidden { display: none; }
+        .modal {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: grid;
+            place-items: center;
+            padding: 16px;
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(2px);
+        }
+        .modal-content {
+            width: min(560px, 100%);
+            background: #fff;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            box-shadow: 0 18px 48px rgba(15, 23, 42, .35);
+            padding: 18px;
+        }
+        .modal-text {
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+        .vk-code {
+            border: 1px dashed #94a3b8;
+            border-radius: 10px;
+            padding: 10px 12px;
+            background: #f8fafc;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: .08em;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .vk-link {
+            display: inline-flex;
+            margin-bottom: 10px;
+            color: var(--primary);
+            font-weight: 700;
+            text-decoration: none;
+        }
+        .vk-link:hover { color: var(--primary-dark); }
+        .modal-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
 
         @media (max-width: 720px) {
             .wrap { width: min(980px, 100% - 20px); }
             .section { padding: 14px; }
             .controls > * { width: 100%; }
             button { width: 100%; }
+            .modal-actions > * { width: 100%; }
         }
+
     </style>
 </head>
 <body>
@@ -417,12 +469,7 @@
 
         <div class="section">
             <h2>Привязка ВК</h2>
-            <div class="section-note">
-                Привязать ВК можно только из личного кабинета.
-                Нажмите кнопку ниже, сайт создаст одноразовый код на 10 минут.
-                Потом отправьте этот код боту ВК в формате:
-                <strong>привязать ABC123</strong>
-            </div>
+            <div class="section-note">Нажмите кнопку — откроется окно с кодом и подробной инструкцией.</div>
             <button type="button" id="vk-link-btn">Привязать VK</button>
         </div>
 
@@ -594,25 +641,88 @@
                 }
             });
         });
+
+        const vkLinkBtn = document.getElementById("vk-link-btn");
+        const vkModal = document.getElementById("vk-modal");
+        const vkCode = document.getElementById("vk-code");
+        const vkBotLink = document.getElementById("vk-bot-link");
+        const vkCopyBtn = document.getElementById("vk-copy-btn");
+        const vkCloseBtn = document.getElementById("vk-close-btn");
+
+        const hideVkModal = () => vkModal.classList.add("hidden");
+        const showVkModal = () => vkModal.classList.remove("hidden");
+
+        vkLinkBtn?.addEventListener("click", async () => {
+            const previousText = vkLinkBtn.textContent;
+            vkLinkBtn.disabled = true;
+            vkLinkBtn.textContent = "Создаем код...";
+            try {
+                const response = await fetch("/dashboard/vk-link", {
+                    method: "POST",
+                    headers: { "X-Requested-With": "XMLHttpRequest" },
+                    credentials: "same-origin",
+                });
+                const payload = await response.json();
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.error || "Не удалось получить код привязки.");
+                }
+                vkCode.textContent = payload.code || "—";
+                const botLink = payload.vk_bot_link || {{ (vk_bot_link or '')|tojson }};
+                if (botLink) {
+                    vkBotLink.href = botLink;
+                    vkBotLink.style.display = "inline-flex";
+                } else {
+                    vkBotLink.href = "#";
+                    vkBotLink.style.display = "none";
+                }
+                showVkModal();
+            } catch (error) {
+                alert(error.message || "Не удалось получить код привязки.");
+            } finally {
+                vkLinkBtn.disabled = false;
+                vkLinkBtn.textContent = previousText;
+            }
+        });
+
+        vkCopyBtn?.addEventListener("click", async () => {
+            const code = (vkCode.textContent || "").trim();
+            if (!code || code === "—") return;
+            const command = `привязать ${code}`;
+            try {
+                await navigator.clipboard.writeText(command);
+                const previousText = vkCopyBtn.textContent;
+                vkCopyBtn.textContent = "Скопировано ✓";
+                setTimeout(() => { vkCopyBtn.textContent = previousText; }, 1400);
+            } catch (error) {
+                alert("Не удалось скопировать код.");
+            }
+        });
+
+        vkCloseBtn?.addEventListener("click", hideVkModal);
+        vkModal?.addEventListener("click", (event) => {
+            if (event.target === vkModal) hideVkModal();
+        });
     </script>
     <div id="vk-modal" class="modal hidden">
         <div class="modal-content">
             <h2>Привязка VK</h2>
 
             <p class="modal-text">
-                1. Скопируйте код ниже<br>
-                2. Напишите его боту ВК<br>
-                3. Готово 🎉
+                1. Скопируйте команду по кнопке ниже<br>
+                2. Откройте бота ВК и отправьте сообщение в формате <strong>привязать ABC123</strong><br>
+                3. Код одноразовый и действует 10 минут
             </p>
 
             <div class="vk-code" id="vk-code">—</div>
 
-            <a id="vk-bot-link" href="#" target="_blank" class="vk-link">
+            <a id="vk-bot-link" href="{{ vk_bot_link or '#' }}" target="_blank" class="vk-link" {% if not vk_bot_link %}style="display:none;"{% endif %}>
                 Открыть бота ВК
             </a>
 
-            <button id="vk-copy-btn">Скопировать код</button>
-            <button id="vk-close-btn" class="danger">Закрыть</button>
+            <div class="modal-actions">
+                <button id="vk-copy-btn">Скопировать команду</button>
+                <button id="vk-close-btn" class="danger">Закрыть</button>
+            </div>
         </div>
     </div>
 </body>

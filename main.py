@@ -73,6 +73,7 @@ VPS_ISSUER_TOKEN_ENV = "VPS_ISSUER_TOKEN"
 VK_CONFIRMATION_CODE_ENV = "VK_CONFIRMATION_CODE"
 VK_SECRET_ENV = "VK_SECRET"
 VK_TOKEN_ENV = "VK_TOKEN"
+VK_BOT_LINK_ENV = "VK_BOT_LINK"
 APP_BASE_URL_ENV = "APP_BASE_URL"
 
 app = FastAPI(title="PrivateToolsPortal")
@@ -699,6 +700,10 @@ def get_vk_token() -> str:
     return os.getenv(VK_TOKEN_ENV, "").strip()
 
 
+def get_vk_bot_link() -> str:
+    return os.getenv(VK_BOT_LINK_ENV, "").strip()
+
+
 def get_app_base_url() -> str:
     return os.getenv(APP_BASE_URL_ENV, "").strip().rstrip("/")
 
@@ -1189,6 +1194,7 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             "support_tickets": support_tickets,
             "support_messages_by_ticket": support_messages_by_ticket,
             "support_status_label": format_support_status,
+            "vk_bot_link": get_vk_bot_link(),
         },
     )
 
@@ -1196,23 +1202,20 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
 async def dashboard_vk_link(request: Request):
     user = get_current_user(request)
     if not user:
-        return RedirectResponse("/login", status_code=303)
+        return JSONResponse({"ok": False, "error": "Требуется авторизация."}, status_code=401)
 
     with get_db_connection() as con:
         existing_link = get_vk_link_by_portal_user(con, int(user["id"]))
         if existing_link:
-            return RedirectResponse(
-                "/dashboard?error=К+этому+аккаунту+уже+привязан+ВК",
-                status_code=303,
+            return JSONResponse(
+                {"ok": False, "error": "К этому аккаунту уже привязан ВК."},
+                status_code=409,
             )
 
         code = create_vk_link_code(con, int(user["id"]), int(user["telegram_id"]))
         con.commit()
 
-    success_text = quote_plus(
-        f"Код+для+привязки+ВК:+{code}.+Напишите+боту+в+ВК:+привязать+{code}"
-    )
-    return RedirectResponse(f"/dashboard?success={success_text}", status_code=303)
+    return JSONResponse({"ok": True, "code": code, "vk_bot_link": get_vk_bot_link()})
 
 @app.post("/dashboard/change-plan")
 async def dashboard_change_plan(
