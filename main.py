@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -70,6 +70,8 @@ YOOKASSA_SECRET_KEY_ENV = "YOOKASSA_SECRET_KEY"
 YOOKASSA_RETURN_URL_ENV = "YOOKASSA_RETURN_URL"
 VPS_ISSUER_URL_ENV = "VPS_ISSUER_URL"
 VPS_ISSUER_TOKEN_ENV = "VPS_ISSUER_TOKEN"
+VK_CONFIRMATION_CODE_ENV = "VK_CONFIRMATION_CODE"
+VK_SECRET_ENV = "VK_SECRET"
 
 app = FastAPI(title="PrivateToolsPortal")
 
@@ -656,6 +658,13 @@ def issue_session(response: RedirectResponse, user_id: int) -> None:
 
 def get_admin_password() -> str:
     return os.getenv(ADMIN_PASSWORD_ENV, "").strip()
+
+def get_vk_confirmation_code() -> str:
+    return os.getenv(VK_CONFIRMATION_CODE_ENV, "").strip()
+
+
+def get_vk_secret() -> str:
+    return os.getenv(VK_SECRET_ENV, "").strip()
 
 
 def is_admin(request: Request) -> bool:
@@ -1744,6 +1753,29 @@ async def admin_support_set_status(request: Request, ticket_id: int, status: str
     if not updated:
         return RedirectResponse("/admin/support?error=Обращение+не+найдено", status_code=303)
     return RedirectResponse("/admin/support?success=Статус+обращения+обновлен", status_code=303)
+
+@app.post("/vk/callback")
+async def vk_callback(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        return PlainTextResponse("invalid json", status_code=400)
+
+    expected_secret = get_vk_secret()
+    if expected_secret:
+        incoming_secret = str(body.get("secret", "")).strip()
+        if incoming_secret != expected_secret:
+            return JSONResponse({"ok": False, "error": "invalid secret"}, status_code=403)
+
+    event_type = str(body.get("type", "")).strip()
+
+    if event_type == "confirmation":
+        code = get_vk_confirmation_code()
+        if not code:
+            return PlainTextResponse("VK confirmation code is not configured", status_code=500)
+        return PlainTextResponse(code)
+
+    return PlainTextResponse("ok")
 
 @app.get("/", response_class=HTMLResponse)
 async def root_redirect() -> RedirectResponse:
