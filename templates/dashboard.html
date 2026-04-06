@@ -609,7 +609,29 @@
             </div>
         </div>
 
+        <</div>
+    <div id="vk-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Привязка VK</h2>
+
+            <p class="modal-text">
+                1. Скопируйте команду по кнопке ниже<br>
+                2. Откройте бота ВК и отправьте сообщение в формате <strong>привязать ABC123</strong><br>
+                3. Код одноразовый и действует 10 минут
+            </p>
+
+            <div class="vk-code" id="vk-code">—</div>
+
+            <a id="vk-bot-link" href="{{ vk_bot_link or '#' }}" target="_blank" class="vk-link" {% if not vk_bot_link %}style="display:none;"{% endif %}>
+                Открыть бота ВК
+            </a>
+
+            <div class="modal-actions">
+                <button id="vk-copy-btn">Скопировать команду</button>
+                <button id="vk-close-btn" class="danger">Закрыть</button>
+            </div>
         </div>
+    </div>
     <script>
         const panelButtons = document.querySelectorAll("[data-panel-target]");
         const panels = document.querySelectorAll(".key-panel");
@@ -703,27 +725,5 @@
             if (event.target === vkModal) hideVkModal();
         });
     </script>
-    <div id="vk-modal" class="modal hidden">
-        <div class="modal-content">
-            <h2>Привязка VK</h2>
-
-            <p class="modal-text">
-                1. Скопируйте команду по кнопке ниже<br>
-                2. Откройте бота ВК и отправьте сообщение в формате <strong>привязать ABC123</strong><br>
-                3. Код одноразовый и действует 10 минут
-            </p>
-
-            <div class="vk-code" id="vk-code">—</div>
-
-            <a id="vk-bot-link" href="{{ vk_bot_link or '#' }}" target="_blank" class="vk-link" {% if not vk_bot_link %}style="display:none;"{% endif %}>
-                Открыть бота ВК
-            </a>
-
-            <div class="modal-actions">
-                <button id="vk-copy-btn">Скопировать команду</button>
-                <button id="vk-close-btn" class="danger">Закрыть</button>
-            </div>
-        </div>
-    </div>
 </body>
 </html>
