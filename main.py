@@ -238,6 +238,8 @@ def ensure_vk_tables(con: sqlite3.Connection) -> None:
             vk_user_id INTEGER,
             FOREIGN KEY(portal_user_id) REFERENCES portal_users(id)
         )
+        """
+    )
     con.execute(
         """
         CREATE TABLE IF NOT EXISTS vk_subscription_reminders (
@@ -600,11 +602,7 @@ def revoke_vpn_key_on_vps(kind: str, vps_id: Optional[int], peer_pub: Optional[s
 
 def deactivate_user_keys(con: sqlite3.Connection, telegram_id: int) -> tuple[int, int]:
     active_keys = con.execute(
-        """
-        SELECT id, kind, vps_id, peer_pub, peer_ip
-        FROM vpn_keys
-        WHERE telegram_id = ? AND revoked_at IS NULL
-        """,
+        "SELECT id, kind, vps_id, peer_pub, peer_ip FROM vpn_keys WHERE telegram_id = ? AND revoked_at IS NULL",
         (telegram_id,),
     ).fetchall()
     if not active_keys:
@@ -676,10 +674,7 @@ def issue_session(response: RedirectResponse, user_id: int) -> None:
 
     with get_db_connection() as con:
         con.execute(
-            """
-            INSERT INTO portal_sessions (session_id, user_id, created_at, expires_at)
-            VALUES (?, ?, ?, ?)
-            """,
+            "INSERT INTO portal_sessions (session_id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
             (session_id, user_id, created_at.isoformat(), expires_at.isoformat()),
         )
         con.commit()
@@ -724,19 +719,17 @@ def create_vk_link_code(con: sqlite3.Connection, portal_user_id: int, telegram_i
 
     # Удаляем старые неиспользованные коды пользователя
     con.execute(
-        """
-        DELETE FROM vk_link_codes
-        WHERE portal_user_id = ? AND used_at IS NULL
-        """,
+        "DELETE FROM vk_link_codes WHERE portal_user_id = ? AND used_at IS NULL",
         (portal_user_id,),
     )
 
     code = generate_vk_link_code()
     con.execute(
-        """
-        INSERT INTO vk_link_codes (code, portal_user_id, telegram_id, created_at, expires_at, used_at, vk_user_id)
-        VALUES (?, ?, ?, ?, ?, NULL, NULL)
-        """,
+        (
+            "INSERT INTO vk_link_codes "
+            "(code, portal_user_id, telegram_id, created_at, expires_at, used_at, vk_user_id) "
+            "VALUES (?, ?, ?, ?, ?, NULL, NULL)"
+        ),
         (code, portal_user_id, telegram_id, now.isoformat(), expires_at.isoformat()),
     )
     return code
@@ -744,21 +737,14 @@ def create_vk_link_code(con: sqlite3.Connection, portal_user_id: int, telegram_i
 
 def get_vk_link_by_portal_user(con: sqlite3.Connection, portal_user_id: int) -> Optional[sqlite3.Row]:
     return con.execute(
-        """
-        SELECT *
-        FROM vk_links
-        WHERE portal_user_id = ?
-        """,
+        "SELECT * FROM vk_links WHERE portal_user_id = ?",
         (portal_user_id,),
     ).fetchone()
 
 
 def unlink_vk_by_portal_user(con: sqlite3.Connection, portal_user_id: int) -> bool:
     result = con.execute(
-        """
-        DELETE FROM vk_links
-        WHERE portal_user_id = ?
-        """,
+        "DELETE FROM vk_links WHERE portal_user_id = ?",
         (portal_user_id,),
     )
     return result.rowcount > 0
@@ -766,11 +752,7 @@ def unlink_vk_by_portal_user(con: sqlite3.Connection, portal_user_id: int) -> bo
 
 def consume_vk_link_code(con: sqlite3.Connection, code: str, vk_user_id: int) -> tuple[bool, str]:
     row = con.execute(
-        """
-        SELECT *
-        FROM vk_link_codes
-        WHERE code = ?
-        """,
+        "SELECT * FROM vk_link_codes WHERE code = ?",
         (code,),
     ).fetchone()
 
@@ -789,20 +771,14 @@ def consume_vk_link_code(con: sqlite3.Connection, code: str, vk_user_id: int) ->
         return False, "Срок действия кода истек. Создайте новый код в кабинете."
 
     existing_vk = con.execute(
-        """
-        SELECT * FROM vk_links
-        WHERE vk_user_id = ?
-        """,
+        "SELECT * FROM vk_links WHERE vk_user_id = ?",
         (vk_user_id,),
     ).fetchone()
     if existing_vk:
         return False, "Этот аккаунт ВК уже привязан."
 
     existing_user_link = con.execute(
-        """
-        SELECT * FROM vk_links
-        WHERE portal_user_id = ?
-        """,
+        "SELECT * FROM vk_links WHERE portal_user_id = ?",
         (row["portal_user_id"],),
     ).fetchone()
     if existing_user_link:
@@ -810,18 +786,11 @@ def consume_vk_link_code(con: sqlite3.Connection, code: str, vk_user_id: int) ->
 
     now_iso = utcnow().isoformat()
     con.execute(
-        """
-        INSERT INTO vk_links (vk_user_id, portal_user_id, telegram_id, created_at)
-        VALUES (?, ?, ?, ?)
-        """,
+        "INSERT INTO vk_links (vk_user_id, portal_user_id, telegram_id, created_at) VALUES (?, ?, ?, ?)",
         (vk_user_id, row["portal_user_id"], row["telegram_id"], now_iso),
     )
     con.execute(
-        """
-        UPDATE vk_link_codes
-        SET used_at = ?, vk_user_id = ?
-        WHERE code = ?
-        """,
+        "UPDATE vk_link_codes SET used_at = ?, vk_user_id = ? WHERE code = ?",
         (now_iso, vk_user_id, code),
     )
     return True, "Аккаунт ВК успешно привязан."
@@ -909,30 +878,26 @@ def send_vk_message_with_keyboard(user_id: int, text: str, keyboard: Optional[st
 
 def get_vk_linked_account(con: sqlite3.Connection, vk_user_id: int) -> Optional[sqlite3.Row]:
     return con.execute(
-        """
-        SELECT l.vk_user_id, l.telegram_id, l.portal_user_id, u.login
-        FROM vk_links l
-        JOIN portal_users u ON u.id = l.portal_user_id
-        WHERE l.vk_user_id = ?
-        """,
+        (
+            "SELECT l.vk_user_id, l.telegram_id, l.portal_user_id, u.login "
+            "FROM vk_links l "
+            "JOIN portal_users u ON u.id = l.portal_user_id "
+            "WHERE l.vk_user_id = ?"
+        ),
         (vk_user_id,),
     ).fetchone()
 
 
 def get_subscription_stats(con: sqlite3.Connection, telegram_id: int) -> Optional[sqlite3.Row]:
     return con.execute(
-        """
-        SELECT s.active_until, s.key_limit, s.title, s.plan,
-               COALESCE(k.active_keys, 0) AS active_keys
-        FROM subscriptions s
-        LEFT JOIN (
-            SELECT telegram_id, COUNT(*) AS active_keys
-            FROM vpn_keys
-            WHERE revoked_at IS NULL
-            GROUP BY telegram_id
-        ) k ON k.telegram_id = s.telegram_id
-        WHERE s.telegram_id = ?
-        """,
+        (
+            "SELECT s.active_until, s.key_limit, s.title, s.plan, COALESCE(k.active_keys, 0) AS active_keys "
+            "FROM subscriptions s "
+            "LEFT JOIN ("
+            "SELECT telegram_id, COUNT(*) AS active_keys FROM vpn_keys WHERE revoked_at IS NULL GROUP BY telegram_id"
+            ") k ON k.telegram_id = s.telegram_id "
+            "WHERE s.telegram_id = ?"
+        ),
         (telegram_id,),
     ).fetchone()
 
@@ -954,11 +919,7 @@ def maybe_send_vk_subscription_reminder(con: sqlite3.Connection, vk_user_id: int
         return
 
     reminder = con.execute(
-        """
-        SELECT last_sent_at
-        FROM vk_subscription_reminders
-        WHERE vk_user_id = ?
-        """,
+        "SELECT last_sent_at FROM vk_subscription_reminders WHERE vk_user_id = ?",
         (vk_user_id,),
     ).fetchone()
     if reminder:
@@ -981,11 +942,11 @@ def maybe_send_vk_subscription_reminder(con: sqlite3.Connection, vk_user_id: int
     )
     now_iso = now.isoformat()
     con.execute(
-        """
-        INSERT INTO vk_subscription_reminders (vk_user_id, last_sent_at)
-        VALUES (?, ?)
-        ON CONFLICT(vk_user_id) DO UPDATE SET last_sent_at = excluded.last_sent_at
-        """,
+        (
+            "INSERT INTO vk_subscription_reminders (vk_user_id, last_sent_at) "
+            "VALUES (?, ?) "
+            "ON CONFLICT(vk_user_id) DO UPDATE SET last_sent_at = excluded.last_sent_at"
+        ),
         (vk_user_id, now_iso),
     )
 
@@ -1040,10 +1001,11 @@ def create_key_for_vk_user(con: sqlite3.Connection, telegram_id: int, key_kind: 
 
     created_at = now.isoformat()
     cur = con.execute(
-        """
-        INSERT INTO vpn_keys (telegram_id, kind, title, payload, created_at, revoked_at, vps_id, peer_pub, peer_ip)
-        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)
-        """,
+        (
+            "INSERT INTO vpn_keys "
+            "(telegram_id, kind, title, payload, created_at, revoked_at, vps_id, peer_pub, peer_ip) "
+            "VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)"
+        ),
         (telegram_id, key_kind, key_title, payload, created_at, vps_id, peer_pub, peer_ip),
     )
     key_id = int(cur.lastrowid)
@@ -1243,11 +1205,11 @@ async def activate_page(request: Request, code: str = ""):
     if code:
         with get_db_connection() as con:
             invite_info = con.execute(
-                """
-                SELECT i.invite_code, i.used_at, i.plan, i.key_limit, i.title, i.price_rub, i.duration_days
-                FROM portal_invites i
-                WHERE i.invite_code = ?
-                """,
+                (
+                    "SELECT i.invite_code, i.used_at, i.plan, i.key_limit, i.title, i.price_rub, i.duration_days "
+                    "FROM portal_invites i "
+                    "WHERE i.invite_code = ?"
+                ),
                 (code,),
             ).fetchone()
 
@@ -1319,10 +1281,11 @@ async def activate_submit(
         now = utcnow().isoformat()
 
         user_cursor = con.execute(
-            """
-            INSERT INTO portal_users (telegram_id, login, password_salt, password_hash, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
+            (
+                "INSERT INTO portal_users "
+                "(telegram_id, login, password_salt, password_hash, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)"
+            ),
             (invite["telegram_id"], login, salt, password_hash, now, now),
         )
         user_id = user_cursor.lastrowid
@@ -1345,16 +1308,16 @@ async def activate_submit(
             duration_days = invite["duration_days"] or 30
             active_until = (utcnow() + timedelta(days=duration_days)).isoformat()
             con.execute(
-                """
-                INSERT INTO subscriptions (telegram_id, active_until, plan, key_limit, price_rub, title)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(telegram_id) DO UPDATE SET
-                    active_until=excluded.active_until,
-                    plan=excluded.plan,
-                    key_limit=excluded.key_limit,
-                    price_rub=excluded.price_rub,
-                    title=excluded.title
-                """,
+                (
+                    "INSERT INTO subscriptions (telegram_id, active_until, plan, key_limit, price_rub, title) "
+                    "VALUES (?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(telegram_id) DO UPDATE SET "
+                    "active_until=excluded.active_until, "
+                    "plan=excluded.plan, "
+                    "key_limit=excluded.key_limit, "
+                    "price_rub=excluded.price_rub, "
+                    "title=excluded.title"
+                ),
                 (
                     resolved_telegram_id,
                     active_until,
@@ -1377,18 +1340,14 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
 
     with get_db_connection() as con:
         stats = con.execute(
-            """
-            SELECT s.plan, s.title, s.key_limit, s.active_until,
-                   COALESCE(k.active_keys, 0) AS active_keys
-            FROM subscriptions s
-            LEFT JOIN (
-                SELECT telegram_id, COUNT(*) AS active_keys
-                FROM vpn_keys
-                WHERE revoked_at IS NULL
-                GROUP BY telegram_id
-            ) k ON k.telegram_id = s.telegram_id
-            WHERE s.telegram_id = ?
-            """,
+            (
+                "SELECT s.plan, s.title, s.key_limit, s.active_until, COALESCE(k.active_keys, 0) AS active_keys "
+                "FROM subscriptions s "
+                "LEFT JOIN ("
+                "SELECT telegram_id, COUNT(*) AS active_keys FROM vpn_keys WHERE revoked_at IS NULL GROUP BY telegram_id"
+                ") k ON k.telegram_id = s.telegram_id "
+                "WHERE s.telegram_id = ?"
+            ),
             (user["telegram_id"],),
         ).fetchone()
         if stats and stats["active_until"]:
@@ -1397,33 +1356,29 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
                 deactivate_user_keys(con, user["telegram_id"])
                 con.commit()
         keys = con.execute(
-            """
-            SELECT id, kind, title, payload, created_at
-            FROM vpn_keys
-            WHERE telegram_id = ? AND revoked_at IS NULL
-            ORDER BY created_at DESC
-            """,
+            (
+                "SELECT id, kind, title, payload, created_at "
+                "FROM vpn_keys WHERE telegram_id = ? AND revoked_at IS NULL "
+                "ORDER BY created_at DESC"
+            ),
             (user["telegram_id"],),
         ).fetchall()
         balance_rub = get_or_create_wallet_balance(con, user["telegram_id"])
         support_tickets = con.execute(
-            """
-            SELECT id, status, subject, category, priority, created_at, updated_at, closed_at, rating, feedback
-            FROM support_tickets
-            WHERE telegram_id = ?
-            ORDER BY id DESC
-            LIMIT 20
-            """,
+            (
+                "SELECT id, status, subject, category, priority, created_at, updated_at, closed_at, rating, feedback "
+                "FROM support_tickets WHERE telegram_id = ? ORDER BY id DESC LIMIT 20"
+            ),
             (user["telegram_id"],),
         ).fetchall()
         support_messages = con.execute(
-            """
-            SELECT m.ticket_id, m.sender_role, m.text, m.created_at, u.login AS admin_login
-            FROM support_messages m
-            LEFT JOIN portal_users u ON u.id = m.sender_id
-            WHERE m.telegram_id = ?
-            ORDER BY m.id ASC
-            """,
+            (
+                "SELECT m.ticket_id, m.sender_role, m.text, m.created_at, u.login AS admin_login "
+                "FROM support_messages m "
+                "LEFT JOIN portal_users u ON u.id = m.sender_id "
+                "WHERE m.telegram_id = ? "
+                "ORDER BY m.id ASC"
+            ),
             (user["telegram_id"],),
         ).fetchall()
         vk_link = get_vk_link_by_portal_user(con, int(user["id"]))
@@ -1531,20 +1486,20 @@ async def dashboard_change_plan(
         base_message += f"\n\nКомментарий пользователя:\n{user_comment}"
     with get_db_connection() as con:
         ticket_cursor = con.execute(
-            """
-            INSERT INTO support_tickets (
-                telegram_id, status, subject, category, priority, created_at, updated_at, closed_at, rating, feedback
-            )
-            VALUES (?, 'open', ?, 'billing', 'normal', ?, ?, NULL, NULL, NULL)
-            """,
+            (
+                "INSERT INTO support_tickets "
+                "(telegram_id, status, subject, category, priority, created_at, updated_at, closed_at, rating, feedback) "
+                "VALUES (?, 'open', ?, 'billing', 'normal', ?, ?, NULL, NULL, NULL)"
+            ),
             (user["telegram_id"], subject, now, now),
         )
         ticket_id = ticket_cursor.lastrowid
         con.execute(
-            """
-            INSERT INTO support_messages (ticket_id, telegram_id, sender_role, sender_id, text, created_at)
-            VALUES (?, ?, 'user', ?, ?, ?)
-            """,
+            (
+                "INSERT INTO support_messages "
+                "(ticket_id, telegram_id, sender_role, sender_id, text, created_at) "
+                "VALUES (?, ?, 'user', ?, ?, ?)"
+            ),
             (ticket_id, user["telegram_id"], user["id"], base_message, now),
         )
         con.commit()
@@ -1602,10 +1557,11 @@ async def dashboard_subscription_action(request: Request, action: str = Form(...
 
             now_iso = now.isoformat()
             con.execute(
-                """
-                INSERT INTO payments (telegram_id, payment_id, amount, plan, key_limit, price_rub, title, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-                """,
+                (
+                    "INSERT INTO payments "
+                    "(telegram_id, payment_id, amount, plan, key_limit, price_rub, title, status, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)"
+                ),
                 (
                     user["telegram_id"],
                     payment_id,
@@ -1618,10 +1574,11 @@ async def dashboard_subscription_action(request: Request, action: str = Form(...
                 ),
             )
             con.execute(
-                """
-                INSERT INTO payment_actions (payment_id, telegram_id, action, target_plan_key, amount_rub, status, created_at, updated_at)
-                VALUES (?, ?, 'renew', NULL, ?, 'pending', ?, ?)
-                """,
+                (
+                    "INSERT INTO payment_actions "
+                    "(payment_id, telegram_id, action, target_plan_key, amount_rub, status, created_at, updated_at) "
+                    "VALUES (?, ?, 'renew', NULL, ?, 'pending', ?, ?)"
+                ),
                 (payment_id, user["telegram_id"], price_rub, now_iso, now_iso),
             )
             con.commit()
@@ -1665,10 +1622,7 @@ async def dashboard_payment_return(request: Request, payment_id: str = ""):
 
     with get_db_connection() as con:
         action_row = con.execute(
-            """
-            SELECT * FROM payment_actions
-            WHERE payment_id = ? AND telegram_id = ? AND status = 'pending'
-            """,
+            "SELECT * FROM payment_actions WHERE payment_id = ? AND telegram_id = ? AND status = 'pending'",
             (payment_id, user["telegram_id"]),
         ).fetchone()
         if not action_row:
@@ -1727,16 +1681,16 @@ async def dashboard_payment_return(request: Request, payment_id: str = ""):
                 if wallet_credit_rub > 0:
                     increase_wallet_balance(con, user["telegram_id"], wallet_credit_rub)
             con.execute(
-                """
-                INSERT INTO subscriptions (telegram_id, active_until, plan, key_limit, price_rub, title)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(telegram_id) DO UPDATE SET
-                    active_until=excluded.active_until,
-                    plan=excluded.plan,
-                    key_limit=excluded.key_limit,
-                    price_rub=excluded.price_rub,
-                    title=excluded.title
-                """,
+                (
+                    "INSERT INTO subscriptions (telegram_id, active_until, plan, key_limit, price_rub, title) "
+                    "VALUES (?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(telegram_id) DO UPDATE SET "
+                    "active_until=excluded.active_until, "
+                    "plan=excluded.plan, "
+                    "key_limit=excluded.key_limit, "
+                    "price_rub=excluded.price_rub, "
+                    "title=excluded.title"
+                ),
                 (
                     user["telegram_id"],
                     new_active_until.isoformat(),
@@ -1772,18 +1726,14 @@ async def dashboard_create_key(request: Request, key_kind: str = Form(...), key_
     now = utcnow()
     with get_db_connection() as con:
         stats = con.execute(
-            """
-            SELECT s.active_until, s.key_limit,
-                   COALESCE(k.active_keys, 0) AS active_keys
-            FROM subscriptions s
-            LEFT JOIN (
-                SELECT telegram_id, COUNT(*) AS active_keys
-                FROM vpn_keys
-                WHERE revoked_at IS NULL
-                GROUP BY telegram_id
-            ) k ON k.telegram_id = s.telegram_id
-            WHERE s.telegram_id = ?
-            """,
+            (
+                "SELECT s.active_until, s.key_limit, COALESCE(k.active_keys, 0) AS active_keys "
+                "FROM subscriptions s "
+                "LEFT JOIN ("
+                "SELECT telegram_id, COUNT(*) AS active_keys FROM vpn_keys WHERE revoked_at IS NULL GROUP BY telegram_id"
+                ") k ON k.telegram_id = s.telegram_id "
+                "WHERE s.telegram_id = ?"
+            ),
             (user["telegram_id"],),
         ).fetchone()
         if not stats:
@@ -1808,10 +1758,11 @@ async def dashboard_create_key(request: Request, key_kind: str = Form(...), key_
         except RuntimeError as exc:
             return RedirectResponse(f"/dashboard?error={str(exc).replace(' ', '+')}", status_code=303)
         con.execute(
-            """
-            INSERT INTO vpn_keys (telegram_id, kind, title, payload, created_at, revoked_at, vps_id, peer_pub, peer_ip)
-            VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)
-            """,
+            (
+                "INSERT INTO vpn_keys "
+                "(telegram_id, kind, title, payload, created_at, revoked_at, vps_id, peer_pub, peer_ip) "
+                "VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)"
+            ),
             (user["telegram_id"], key_kind, title, payload, created_at, vps_id, peer_pub, peer_ip),
         )
         con.commit()
@@ -1830,11 +1781,7 @@ async def dashboard_rename_key(request: Request, key_id: int, key_title: str = F
 
     with get_db_connection() as con:
         updated = con.execute(
-            """
-            UPDATE vpn_keys
-            SET title = ?
-            WHERE id = ? AND telegram_id = ? AND revoked_at IS NULL
-            """,
+            "UPDATE vpn_keys SET title = ? WHERE id = ? AND telegram_id = ? AND revoked_at IS NULL",
             (key_title, key_id, user["telegram_id"]),
         ).rowcount
         con.commit()
@@ -1851,11 +1798,11 @@ async def dashboard_delete_key(request: Request, key_id: int):
 
     with get_db_connection() as con:
         key = con.execute(
-            """
-            SELECT id, kind, vps_id, peer_pub, peer_ip
-            FROM vpn_keys
-            WHERE id = ? AND telegram_id = ? AND revoked_at IS NULL
-            """,
+            (
+                "SELECT id, kind, vps_id, peer_pub, peer_ip "
+                "FROM vpn_keys "
+                "WHERE id = ? AND telegram_id = ? AND revoked_at IS NULL"
+            ),
             (key_id, user["telegram_id"]),
         ).fetchone()
     if not key:
@@ -1873,11 +1820,7 @@ async def dashboard_delete_key(request: Request, key_id: int):
 
     with get_db_connection() as con:
         updated = con.execute(
-            """
-            UPDATE vpn_keys
-            SET revoked_at = ?
-            WHERE id = ? AND telegram_id = ? AND revoked_at IS NULL
-            """,
+            "UPDATE vpn_keys SET revoked_at = ? WHERE id = ? AND telegram_id = ? AND revoked_at IS NULL",
             (utcnow().isoformat(), key_id, user["telegram_id"]),
         ).rowcount
         con.commit()
@@ -1894,11 +1837,11 @@ async def dashboard_download_key(request: Request, key_id: int):
 
     with get_db_connection() as con:
         key = con.execute(
-            """
-            SELECT id, kind, title, payload
-            FROM vpn_keys
-            WHERE id = ? AND telegram_id = ? AND revoked_at IS NULL
-            """,
+            (
+                "SELECT id, kind, title, payload "
+                "FROM vpn_keys "
+                "WHERE id = ? AND telegram_id = ? AND revoked_at IS NULL"
+            ),
             (key_id, user["telegram_id"]),
         ).fetchone()
 
@@ -1949,20 +1892,20 @@ async def dashboard_support_create_ticket(
     now = utcnow().isoformat()
     with get_db_connection() as con:
         ticket_cursor = con.execute(
-            """
-            INSERT INTO support_tickets (
-                telegram_id, status, subject, category, priority, created_at, updated_at, closed_at, rating, feedback
-            )
-            VALUES (?, 'open', ?, ?, ?, ?, ?, NULL, NULL, NULL)
-            """,
+            (
+                "INSERT INTO support_tickets "
+                "(telegram_id, status, subject, category, priority, created_at, updated_at, closed_at, rating, feedback) "
+                "VALUES (?, 'open', ?, ?, ?, ?, ?, NULL, NULL, NULL)"
+            ),
             (user["telegram_id"], subject, category, priority, now, now),
         )
         ticket_id = ticket_cursor.lastrowid
         con.execute(
-            """
-            INSERT INTO support_messages (ticket_id, telegram_id, sender_role, sender_id, text, created_at)
-            VALUES (?, ?, 'user', ?, ?, ?)
-            """,
+            (
+                "INSERT INTO support_messages "
+                "(ticket_id, telegram_id, sender_role, sender_id, text, created_at) "
+                "VALUES (?, ?, 'user', ?, ?, ?)"
+            ),
             (ticket_id, user["telegram_id"], user["id"], message, now),
         )
         con.commit()
@@ -1999,10 +1942,11 @@ async def dashboard_support_reply(request: Request, ticket_id: int, message: str
         if ticket["status"] == "closed":
             return RedirectResponse("/dashboard?error=Обращение+закрыто,+создайте+новое", status_code=303)
         con.execute(
-            """
-            INSERT INTO support_messages (ticket_id, telegram_id, sender_role, sender_id, text, created_at)
-            VALUES (?, ?, 'user', ?, ?, ?)
-            """,
+            (
+                "INSERT INTO support_messages "
+                "(ticket_id, telegram_id, sender_role, sender_id, text, created_at) "
+                "VALUES (?, ?, 'user', ?, ?, ?)"
+            ),
             (ticket_id, user["telegram_id"], user["id"], message, now),
         )
         con.execute(
@@ -2021,11 +1965,11 @@ async def dashboard_support_close_ticket(request: Request, ticket_id: int):
     now = utcnow().isoformat()
     with get_db_connection() as con:
         updated = con.execute(
-            """
-            UPDATE support_tickets
-            SET status = 'closed', closed_at = ?, updated_at = ?
-            WHERE id = ? AND telegram_id = ? AND status != 'closed'
-            """,
+            (
+                "UPDATE support_tickets "
+                "SET status = 'closed', closed_at = ?, updated_at = ? "
+                "WHERE id = ? AND telegram_id = ? AND status != 'closed'"
+            ),
             (now, now, ticket_id, user["telegram_id"]),
         ).rowcount
         con.commit()
@@ -2052,11 +1996,11 @@ async def dashboard_support_rate_ticket(
 
     with get_db_connection() as con:
         updated = con.execute(
-            """
-            UPDATE support_tickets
-            SET rating = ?, feedback = COALESCE(NULLIF(?, ''), feedback)
-            WHERE id = ? AND telegram_id = ? AND status = 'closed'
-            """,
+            (
+                "UPDATE support_tickets "
+                "SET rating = ?, feedback = COALESCE(NULLIF(?, ''), feedback) "
+                "WHERE id = ? AND telegram_id = ? AND status = 'closed'"
+            ),
             (rating, feedback, ticket_id, user["telegram_id"]),
         ).rowcount
         con.commit()
@@ -2114,12 +2058,11 @@ async def create_invite(request: Request, tariff: str = Form(...), custom_key_li
 
     with get_db_connection() as con:
         con.execute(
-            """
-            INSERT INTO portal_invites (
-                invite_code, telegram_id, created_at, plan, title, key_limit, price_rub, duration_days
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+            (
+                "INSERT INTO portal_invites "
+                "(invite_code, telegram_id, created_at, plan, title, key_limit, price_rub, duration_days) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            ),
             (invite_code, None, now, plan, title, key_limit, price_rub, duration_days),
         )
         con.commit()
@@ -2147,14 +2090,14 @@ async def admin_invites_page(request: Request, error: str = "", created: str = "
 
     with get_db_connection() as con:
         invites = con.execute(
-            """
-            SELECT i.invite_code, i.created_at, i.used_at, i.title, i.key_limit, i.price_rub,
-                   u.id AS user_id, u.login AS user_login, u.revoked_at AS user_revoked_at
-            FROM portal_invites i
-            LEFT JOIN portal_users u ON u.telegram_id = i.telegram_id
-            ORDER BY i.id DESC
-            LIMIT 100
-            """
+            (
+                "SELECT i.invite_code, i.created_at, i.used_at, i.title, i.key_limit, i.price_rub, "
+                "u.id AS user_id, u.login AS user_login, u.revoked_at AS user_revoked_at "
+                "FROM portal_invites i "
+                "LEFT JOIN portal_users u ON u.telegram_id = i.telegram_id "
+                "ORDER BY i.id DESC "
+                "LIMIT 100"
+            )
         ).fetchall()
 
     return templates.TemplateResponse(
@@ -2221,25 +2164,24 @@ async def admin_support_page(request: Request, error: str = "", success: str = "
 
     with get_db_connection() as con:
         tickets = con.execute(
-            """
-            SELECT t.*, u.login
-            FROM support_tickets t
-            LEFT JOIN portal_users u ON u.telegram_id = t.telegram_id
-            ORDER BY CASE t.status
-                WHEN 'open' THEN 0
-                WHEN 'in_progress' THEN 1
-                ELSE 2
-            END, t.updated_at DESC, t.id DESC
-            LIMIT 60
-            """
+            (
+                "SELECT t.*, u.login "
+                "FROM support_tickets t "
+                "LEFT JOIN portal_users u ON u.telegram_id = t.telegram_id "
+                "ORDER BY CASE t.status "
+                "WHEN 'open' THEN 0 "
+                "WHEN 'in_progress' THEN 1 "
+                "ELSE 2 END, t.updated_at DESC, t.id DESC "
+                "LIMIT 60"
+            )
         ).fetchall()
         messages = con.execute(
-            """
-            SELECT m.ticket_id, m.sender_role, m.text, m.created_at, u.login AS sender_login
-            FROM support_messages m
-            LEFT JOIN portal_users u ON u.id = m.sender_id
-            ORDER BY m.id ASC
-            """
+            (
+                "SELECT m.ticket_id, m.sender_role, m.text, m.created_at, u.login AS sender_login "
+                "FROM support_messages m "
+                "LEFT JOIN portal_users u ON u.id = m.sender_id "
+                "ORDER BY m.id ASC"
+            )
         ).fetchall()
     messages_by_ticket: dict[int, list[sqlite3.Row]] = {}
     for msg in messages:
@@ -2274,10 +2216,11 @@ async def admin_support_reply(request: Request, ticket_id: int, message: str = F
         if not ticket:
             return RedirectResponse("/admin/support?error=Обращение+не+найдено", status_code=303)
         con.execute(
-            """
-            INSERT INTO support_messages (ticket_id, telegram_id, sender_role, sender_id, text, created_at)
-            VALUES (?, ?, 'support', 0, ?, ?)
-            """,
+            (
+                "INSERT INTO support_messages "
+                "(ticket_id, telegram_id, sender_role, sender_id, text, created_at) "
+                "VALUES (?, ?, 'support', 0, ?, ?)"
+            ),
             (ticket_id, ticket["telegram_id"], message, now),
         )
         con.execute(
@@ -2299,11 +2242,7 @@ async def admin_support_set_status(request: Request, ticket_id: int, status: str
     closed_at = now if status == "closed" else None
     with get_db_connection() as con:
         updated = con.execute(
-            """
-            UPDATE support_tickets
-            SET status = ?, closed_at = ?, updated_at = ?
-            WHERE id = ?
-            """,
+            "UPDATE support_tickets SET status = ?, closed_at = ?, updated_at = ? WHERE id = ?",
             (status, closed_at, now, ticket_id),
         ).rowcount
         con.commit()
