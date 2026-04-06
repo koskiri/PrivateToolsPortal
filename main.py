@@ -747,6 +747,17 @@ def get_vk_link_by_portal_user(con: sqlite3.Connection, portal_user_id: int) -> 
     ).fetchone()
 
 
+def unlink_vk_by_portal_user(con: sqlite3.Connection, portal_user_id: int) -> bool:
+    result = con.execute(
+        """
+        DELETE FROM vk_links
+        WHERE portal_user_id = ?
+        """,
+        (portal_user_id,),
+    )
+    return result.rowcount > 0
+
+
 def consume_vk_link_code(con: sqlite3.Connection, code: str, vk_user_id: int) -> tuple[bool, str]:
     row = con.execute(
         """
@@ -1162,6 +1173,7 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             """,
             (user["telegram_id"],),
         ).fetchall()
+        vk_link = get_vk_link_by_portal_user(con, int(user["id"]))
         con.commit()
 
     support_messages_by_ticket: dict[int, list[sqlite3.Row]] = {}
@@ -1195,6 +1207,7 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             "support_messages_by_ticket": support_messages_by_ticket,
             "support_status_label": format_support_status,
             "vk_bot_link": get_vk_bot_link(),
+            "vk_linked": vk_link is not None,
         },
     )
 
@@ -1216,6 +1229,27 @@ async def dashboard_vk_link(request: Request):
         con.commit()
 
     return JSONResponse({"ok": True, "code": code, "vk_bot_link": get_vk_bot_link()})
+
+
+@app.post("/dashboard/vk-unlink")
+async def dashboard_vk_unlink(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    with get_db_connection() as con:
+        unlinked = unlink_vk_by_portal_user(con, int(user["id"]))
+        con.commit()
+
+    if unlinked:
+        return RedirectResponse(
+            "/dashboard?success=Бот+VK+успешно+отвязан",
+            status_code=303,
+        )
+    return RedirectResponse(
+        "/dashboard?error=VK+уже+не+привязан",
+        status_code=303,
+    )
 
 @app.post("/dashboard/change-plan")
 async def dashboard_change_plan(

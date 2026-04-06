@@ -469,9 +469,21 @@
 
         <div class="section">
             <h2>Привязка ВК</h2>
-            <div class="section-note">Нажмите «Привязать VK», затем выполните 3 шага в окне: скопировать команду, открыть бота и отправить команду целиком.</div>
+            <div class="section-note">
+                {% if vk_linked %}
+                    Ваш VK уже привязан. Нажмите «Отвязать бота», чтобы отключить привязку.
+                {% else %}
+                    Через бота вы будете получать уведомления об окончании подписки, а также сможете получать ключи через бот.
+                {% endif %}
+            </div>
             <div class="controls">
-                <button type="button" id="vk-link-btn">Привязать VK</button>
+                {% if vk_linked %}
+                    <form method="post" action="/dashboard/vk-unlink" class="controls" style="display: inline-flex; margin: 0;">
+                        <button type="submit" id="vk-link-btn" class="danger" data-vk-linked="1">Отвязать бота</button>
+                    </form>
+                {% else %}
+                    <button type="button" id="vk-link-btn" data-vk-linked="0">Привязать VK</button>
+                {% endif %}
                 {% if vk_bot_link %}
                     <a href="{{ vk_bot_link }}" target="_blank" rel="noopener noreferrer" class="download-link">Перейти к боту VK</a>
                 {% endif %}
@@ -709,7 +721,7 @@
             }
         };
 
-        if (vkLinkBtn instanceof HTMLButtonElement) {
+        if (vkLinkBtn instanceof HTMLButtonElement && vkLinkBtn.dataset.vkLinked !== "1") {
             vkLinkBtn.addEventListener("click", async () => {
                 const previousText = vkLinkBtn.textContent;
                 vkLinkBtn.disabled = true;
