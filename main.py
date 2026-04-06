@@ -448,8 +448,11 @@ def build_plan_change_terms(
     wallet_credit_rub = max(refund_rub - int(target_price_rub), 0)
     base = now
     if subscription and subscription["active_until"]:
-        existing_active_until = datetime.fromisoformat(subscription["active_until"])
-        if existing_active_until > now:
+        try:
+            existing_active_until = datetime.fromisoformat(subscription["active_until"])
+        except (TypeError, ValueError):
+            existing_active_until = None
+        if existing_active_until and existing_active_until > now:
             base = existing_active_until
     new_active_until = base + timedelta(days=SUBSCRIPTION_RENEW_DAYS)
     return amount_due_rub, refund_rub, wallet_credit_rub, new_active_until
