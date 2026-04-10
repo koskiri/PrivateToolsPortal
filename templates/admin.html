@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Админка — пользователи</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; color: #111827; }
+        .wrap { max-width: 1220px; margin: 28px auto; padding: 0 16px; }
+        .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 3px 14px rgba(0,0,0,.06); margin-bottom: 16px; }
+        .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .link { color: #2563eb; text-decoration: none; font-weight: 700; }
+        .error { color: #b91c1c; margin: 10px 0; }
+        .success { color: #065f46; margin: 10px 0; }
+        .table-wrap { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 10px; }
+        table { width: 100%; border-collapse: collapse; min-width: 980px; }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 14px; vertical-align: top; }
+        th { background: #f9fafb; white-space: nowrap; }
+        .pill { padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; display: inline-block; }
+        .ok { background: #dcfce7; color: #14532d; }
+        .bad { background: #fee2e2; color: #7f1d1d; }
+        button { border: none; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; color: #fff; background: #2563eb; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="card">
+            <div class="row">
+                <h1 style="margin: 0;">Админка: пользователи</h1>
+                <div class="row">
+                    <a class="link" href="/admin/invites">Инвайты</a>
+                    <a class="link" href="/admin/support">Поддержка</a>
+                    {% if is_admin %}
+                    <form method="post" action="/admin/invites/logout" style="margin: 0;">
+                        <button type="submit" style="background:#b91c1c;">Выйти</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% if error %}<div class="error">{{ error }}</div>{% endif %}
+            {% if success %}<div class="success">{{ success }}</div>{% endif %}
+
+            {% if not is_admin %}
+                <div>Для доступа войдите на странице <a href="/admin/invites">/admin/invites</a>.</div>
+            {% else %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Логин</th>
+                                <th>Telegram ID</th>
+                                <th>Подписка</th>
+                                <th>Ключи</th>
+                                <th>Баланс</th>
+                                <th>Статус</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                                <tr>
+                                    <td>{{ user.id }}</td>
+                                    <td>{{ user.login }}</td>
+                                    <td>{{ user.telegram_id or '-' }}</td>
+                                    <td>
+                                        {{ user.subscription_title or '—' }}<br />
+                                        <small>до {{ user.active_until or '—' }}</small>
+                                    </td>
+                                    <td>{{ user.active_keys or 0 }} / {{ user.key_limit or 0 }}</td>
+                                    <td>{{ user.balance_rub or 0 }} ₽</td>
+                                    <td>
+                                        {% if user.revoked_at %}
+                                            <span class="pill bad">Отозван</span>
+                                        {% else %}
+                                            <span class="pill ok">Активен</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><a class="link" href="/admin/users/{{ user.id }}">Открыть профиль</a></td>
+                                </tr>
+                            {% else %}
+                                <tr><td colspan="8">Пользователей пока нет.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

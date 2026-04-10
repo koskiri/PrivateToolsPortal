@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Админка — профиль пользователя</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; color: #111827; }
+        .wrap { max-width: 1100px; margin: 28px auto; padding: 0 16px; }
+        .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 3px 14px rgba(0,0,0,.06); margin-bottom: 16px; }
+        .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+        .field { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; background: #f9fafb; }
+        .label { color: #6b7280; font-size: 12px; margin-bottom: 4px; }
+        .value { font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+        .link { color: #2563eb; text-decoration: none; font-weight: 700; }
+        .error { color: #b91c1c; margin: 10px 0; }
+        .success { color: #065f46; margin: 10px 0; }
+        form { margin: 0; }
+        input, select, button { width: 100%; box-sizing: border-box; border-radius: 10px; font-size: 14px; }
+        input, select { border: 1px solid #d1d5db; padding: 10px; margin-bottom: 8px; }
+        button { border: none; padding: 10px 12px; font-weight: 700; color: #fff; background: #2563eb; cursor: pointer; }
+        .danger { background: #b91c1c; }
+        .muted { color: #6b7280; }
+        .table-wrap { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 10px; }
+        table { width: 100%; border-collapse: collapse; min-width: 660px; }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+        th { background: #f9fafb; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="card">
+            <div class="row">
+                <h1 style="margin:0;">Профиль пользователя</h1>
+                <div class="row">
+                    <a class="link" href="/admin">← Назад к списку</a>
+                    <a class="link" href="/admin/invites">Инвайты</a>
+                    <a class="link" href="/admin/support">Поддержка</a>
+                </div>
+            </div>
+
+            {% if error %}<div class="error">{{ error }}</div>{% endif %}
+            {% if success %}<div class="success">{{ success }}</div>{% endif %}
+
+            {% if not is_admin %}
+                <div>Для доступа войдите на странице <a href="/admin/invites">/admin/invites</a>.</div>
+            {% elif not user %}
+                <div>Пользователь не найден.</div>
+            {% else %}
+                <div class="grid" style="margin-top: 12px;">
+                    <div class="field"><div class="label">ID</div><div class="value">{{ user.id }}</div></div>
+                    <div class="field"><div class="label">Логин</div><div class="value">{{ user.login }}</div></div>
+                    <div class="field"><div class="label">Telegram ID</div><div class="value">{{ user.telegram_id or '-' }}</div></div>
+                    <div class="field"><div class="label">Статус доступа</div><div class="value">{{ 'Отозван' if user.revoked_at else 'Активен' }}</div></div>
+                    <div class="field"><div class="label">Подписка</div><div class="value">{{ user.title or '-' }}</div></div>
+                    <div class="field"><div class="label">Срок подписки</div><div class="value">{{ user.active_until or '-' }}</div></div>
+                    <div class="field"><div class="label">Лимит ключей</div><div class="value">{{ user.key_limit or 0 }}</div></div>
+                    <div class="field"><div class="label">Баланс</div><div class="value">{{ user.wallet_balance or 0 }} ₽</div></div>
+                </div>
+
+                <div class="grid" style="margin-top: 14px;">
+                    <div class="card" style="margin:0;">
+                        <h3 style="margin-top:0;">Сменить тариф</h3>
+                        <form method="post" action="/admin/users/{{ user.id }}/change-plan">
+                            <select name="tariff" required>
+                                {% for key, plan in tariff_presets.items() %}
+                                    <option value="{{ key }}">{{ plan.title }} ({{ plan.key_limit }} ключей)</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit">Применить тариф</button>
+                        </form>
+                    </div>
+
+                    <div class="card" style="margin:0;">
+                        <h3 style="margin-top:0;">Продлить подписку</h3>
+                        <form method="post" action="/admin/users/{{ user.id }}/add-days">
+                            <input type="number" name="days" min="1" max="365" value="30" required />
+                            <button type="submit">Добавить дни</button>
+                        </form>
+                    </div>
+
+                    <div class="card" style="margin:0;">
+                        <h3 style="margin-top:0;">Возврат средств</h3>
+                        <div class="muted" style="margin-bottom:8px;">Возврат начисляется на внутренний баланс пользователя.</div>
+                        <form method="post" action="/admin/users/{{ user.id }}/refund">
+                            <input type="number" name="amount_rub" min="1" max="1000000" placeholder="Сумма, ₽" required />
+                            <button type="submit">Сделать возврат</button>
+                        </form>
+                    </div>
+
+                    <div class="card" style="margin:0;">
+                        <h3 style="margin-top:0;">Сброс пароля</h3>
+                        <form method="post" action="/admin/users/{{ user.id }}/reset-password">
+                            <input type="text" name="new_password" minlength="6" placeholder="Новый пароль (или оставить пустым)" />
+                            <button type="submit">Сбросить пароль</button>
+                        </form>
+                    </div>
+
+                    <div class="card" style="margin:0;">
+                        <h3 style="margin-top:0;">Доступ к сайту</h3>
+                        <form method="post" action="/admin/users/{{ user.id }}/revoke-access" style="margin-bottom:8px;">
+                            <button class="danger" type="submit">Отозвать доступ</button>
+                        </form>
+                        <form method="post" action="/admin/users/{{ user.id }}/restore-access">
+                            <button type="submit">Восстановить доступ</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top:14px;">
+                    <h3 style="margin-top:0;">Ключи пользователя</h3>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>ID</th><th>Тип</th><th>Название</th><th>Создан</th><th>Статус</th></tr></thead>
+                            <tbody>
+                                {% for key in keys %}
+                                    <tr>
+                                        <td>{{ key.id }}</td>
+                                        <td>{{ key.kind }}</td>
+                                        <td>{{ key.title or '-' }}</td>
+                                        <td>{{ key.created_at }}</td>
+                                        <td>{{ 'Отозван' if key.revoked_at else 'Активен' }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr><td colspan="5">Ключей нет</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top:14px;">
+                    <h3 style="margin-top:0;">Последние обращения в поддержку</h3>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>ID</th><th>Тема</th><th>Статус</th><th>Создано</th><th>Обновлено</th></tr></thead>
+                            <tbody>
+                                {% for ticket in support_tickets %}
+                                    <tr>
+                                        <td>{{ ticket.id }}</td>
+                                        <td>{{ ticket.subject or 'Без темы' }}</td>
+                                        <td>{{ status_label(ticket.status) }}</td>
+                                        <td>{{ ticket.created_at }}</td>
+                                        <td>{{ ticket.updated_at or ticket.created_at }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr><td colspan="5">Обращений нет</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

@@ -45,7 +45,10 @@
                 </form>
             {% else %}
                 <div class="topline">
-                    <a href="/admin/support" style="font-weight:700;color:#2563eb;text-decoration:none;">Открыть поддержку</a>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <a href="/admin" style="font-weight:700;color:#2563eb;text-decoration:none;">Пользователи</a>
+                        <a href="/admin/support" style="font-weight:700;color:#2563eb;text-decoration:none;">Открыть поддержку</a>
+                    </div>
                     <form method="post" action="/invite" class="invite-form">
                         <select name="tariff" id="tariff-select" required>
                             <option value="trial">Бесплатно: 1 ключ, 7 дней (тест)</option>

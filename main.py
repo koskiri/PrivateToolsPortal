@@ -2073,6 +2073,282 @@ async def create_invite(request: Request, tariff: str = Form(...), custom_key_li
     return RedirectResponse(f"/admin/invites?created={invite_code}", status_code=303)
 
 
+def admin_user_redirect(user_id: int, success: str = "", error: str = "") -> RedirectResponse:
+    query_parts: list[str] = []
+    if success:
+        query_parts.append(f"success={quote_plus(success)}")
+    if error:
+        query_parts.append(f"error={quote_plus(error)}")
+    suffix = f"?{'&'.join(query_parts)}" if query_parts else ""
+    return RedirectResponse(f"/admin/users/{user_id}{suffix}", status_code=303)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_home_page(request: Request, error: str = "", success: str = ""):
+    admin_password = get_admin_password()
+    if not admin_password:
+        return templates.TemplateResponse(
+            request=request,
+            name="admin.html",
+            context={"error": f"Нужно задать переменную окружения {ADMIN_PASSWORD_ENV}", "success": "", "is_admin": False, "users": []},
+            status_code=503,
+        )
+    if not is_admin(request):
+        return templates.TemplateResponse(
+            request=request,
+            name="admin.html",
+            context={"error": error, "success": success, "is_admin": False, "users": []},
+        )
+
+    with get_db_connection() as con:
+        users = con.execute(
+            (
+                "SELECT u.id, u.login, u.telegram_id, u.created_at, u.revoked_at, "
+                "s.title AS subscription_title, s.active_until, s.key_limit, "
+                "COALESCE(k.active_keys, 0) AS active_keys, "
+                "COALESCE(w.balance_rub, 0) AS balance_rub "
+                "FROM portal_users u "
+                "LEFT JOIN subscriptions s ON s.telegram_id = u.telegram_id "
+                "LEFT JOIN ("
+                "SELECT telegram_id, COUNT(*) AS active_keys FROM vpn_keys WHERE revoked_at IS NULL GROUP BY telegram_id"
+                ") k ON k.telegram_id = u.telegram_id "
+                "LEFT JOIN user_wallets w ON w.telegram_id = u.telegram_id "
+                "ORDER BY u.id DESC "
+                "LIMIT 300"
+            )
+        ).fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context={"error": error, "success": success, "is_admin": True, "users": users},
+    )
+
+
+@app.get("/admin/users/{user_id}", response_class=HTMLResponse)
+async def admin_user_page(request: Request, user_id: int, error: str = "", success: str = ""):
+    admin_password = get_admin_password()
+    if not admin_password:
+        return templates.TemplateResponse(
+            request=request,
+            name="admin_user.html",
+            context={"error": f"Нужно задать переменную окружения {ADMIN_PASSWORD_ENV}", "success": "", "is_admin": False, "user": None},
+            status_code=503,
+        )
+    if not is_admin(request):
+        return templates.TemplateResponse(
+            request=request,
+            name="admin_user.html",
+            context={"error": error, "success": success, "is_admin": False, "user": None},
+        )
+
+    with get_db_connection() as con:
+        user = con.execute(
+            (
+                "SELECT u.id, u.login, u.telegram_id, u.created_at, u.updated_at, u.revoked_at, "
+                "s.plan, s.title, s.price_rub, s.key_limit, s.active_until, "
+                "COALESCE(w.balance_rub, 0) AS wallet_balance "
+                "FROM portal_users u "
+                "LEFT JOIN subscriptions s ON s.telegram_id = u.telegram_id "
+                "LEFT JOIN user_wallets w ON w.telegram_id = u.telegram_id "
+                "WHERE u.id = ?"
+            ),
+            (user_id,),
+        ).fetchone()
+        if not user:
+            return RedirectResponse("/admin?error=Пользователь+не+найден", status_code=303)
+
+        keys = con.execute(
+            (
+                "SELECT id, kind, title, created_at, revoked_at "
+                "FROM vpn_keys WHERE telegram_id = ? "
+                "ORDER BY id DESC LIMIT 100"
+            ),
+            (user["telegram_id"],),
+        ).fetchall() if user["telegram_id"] is not None else []
+
+        support_tickets = con.execute(
+            (
+                "SELECT id, status, subject, created_at, updated_at "
+                "FROM support_tickets WHERE telegram_id = ? "
+                "ORDER BY id DESC LIMIT 20"
+            ),
+            (user["telegram_id"],),
+        ).fetchall() if user["telegram_id"] is not None else []
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_user.html",
+        context={
+            "error": error,
+            "success": success,
+            "is_admin": True,
+            "user": user,
+            "keys": keys,
+            "support_tickets": support_tickets,
+            "tariff_presets": TARIFF_PRESETS,
+            "status_label": format_support_status,
+        },
+    )
+
+
+@app.post("/admin/users/{user_id}/change-plan")
+async def admin_user_change_plan(request: Request, user_id: int, tariff: str = Form(...)):
+    if not is_admin(request):
+        return admin_user_redirect(user_id, error="Нужна авторизация админа")
+    preset = TARIFF_PRESETS.get(tariff)
+    if not preset:
+        return admin_user_redirect(user_id, error="Неизвестный тариф")
+
+    now = utcnow()
+    with get_db_connection() as con:
+        user = con.execute("SELECT telegram_id FROM portal_users WHERE id = ?", (user_id,)).fetchone()
+        if not user:
+            return RedirectResponse("/admin?error=Пользователь+не+найден", status_code=303)
+        if user["telegram_id"] is None:
+            return admin_user_redirect(user_id, error="У пользователя нет Telegram ID")
+
+        existing = con.execute("SELECT active_until FROM subscriptions WHERE telegram_id = ?", (user["telegram_id"],)).fetchone()
+        if existing and existing["active_until"]:
+            try:
+                active_until = datetime.fromisoformat(existing["active_until"])
+            except Exception:
+                active_until = now
+        else:
+            active_until = now
+        if active_until <= now:
+            active_until = now + timedelta(days=int(preset["duration_days"]))
+
+        con.execute(
+            (
+                "INSERT INTO subscriptions (telegram_id, active_until, plan, key_limit, price_rub, title) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(telegram_id) DO UPDATE SET "
+                "active_until=excluded.active_until, "
+                "plan=excluded.plan, "
+                "key_limit=excluded.key_limit, "
+                "price_rub=excluded.price_rub, "
+                "title=excluded.title"
+            ),
+            (
+                user["telegram_id"],
+                active_until.isoformat(),
+                preset["plan"],
+                int(preset["key_limit"]),
+                int(preset["price_rub"]),
+                preset["title"],
+            ),
+        )
+        con.commit()
+    return admin_user_redirect(user_id, success="Тариф пользователя обновлен")
+
+
+@app.post("/admin/users/{user_id}/add-days")
+async def admin_user_add_days(request: Request, user_id: int, days: int = Form(...)):
+    if not is_admin(request):
+        return admin_user_redirect(user_id, error="Нужна авторизация админа")
+    if days < 1 or days > 365:
+        return admin_user_redirect(user_id, error="Можно добавить от 1 до 365 дней")
+
+    now = utcnow()
+    with get_db_connection() as con:
+        user = con.execute("SELECT telegram_id FROM portal_users WHERE id = ?", (user_id,)).fetchone()
+        if not user:
+            return RedirectResponse("/admin?error=Пользователь+не+найден", status_code=303)
+        if user["telegram_id"] is None:
+            return admin_user_redirect(user_id, error="У пользователя нет Telegram ID")
+        sub = con.execute("SELECT active_until FROM subscriptions WHERE telegram_id = ?", (user["telegram_id"],)).fetchone()
+        if not sub:
+            return admin_user_redirect(user_id, error="У пользователя нет активной подписки")
+        try:
+            base = datetime.fromisoformat(sub["active_until"]) if sub["active_until"] else now
+        except Exception:
+            base = now
+        if base < now:
+            base = now
+        new_active_until = base + timedelta(days=days)
+        con.execute(
+            "UPDATE subscriptions SET active_until = ? WHERE telegram_id = ?",
+            (new_active_until.isoformat(), user["telegram_id"]),
+        )
+        con.commit()
+    return admin_user_redirect(user_id, success=f"Срок подписки увеличен на {days} дн.")
+
+
+@app.post("/admin/users/{user_id}/refund")
+async def admin_user_refund(request: Request, user_id: int, amount_rub: int = Form(...)):
+    if not is_admin(request):
+        return admin_user_redirect(user_id, error="Нужна авторизация админа")
+    if amount_rub < 1 or amount_rub > 1_000_000:
+        return admin_user_redirect(user_id, error="Сумма возврата должна быть от 1 до 1000000 ₽")
+    with get_db_connection() as con:
+        user = con.execute("SELECT telegram_id FROM portal_users WHERE id = ?", (user_id,)).fetchone()
+        if not user:
+            return RedirectResponse("/admin?error=Пользователь+не+найден", status_code=303)
+        if user["telegram_id"] is None:
+            return admin_user_redirect(user_id, error="У пользователя нет Telegram ID")
+        increase_wallet_balance(con, int(user["telegram_id"]), amount_rub)
+        con.commit()
+    return admin_user_redirect(user_id, success=f"Возврат {amount_rub} ₽ начислен на внутренний баланс")
+
+
+@app.post("/admin/users/{user_id}/reset-password")
+async def admin_user_reset_password(request: Request, user_id: int, new_password: str = Form("")):
+    if not is_admin(request):
+        return admin_user_redirect(user_id, error="Нужна авторизация админа")
+    password = new_password.strip() or secrets.token_urlsafe(8)
+    if len(password) < 6:
+        return admin_user_redirect(user_id, error="Пароль должен быть не короче 6 символов")
+    salt_hex, password_hash = create_password_hash(password)
+    now = utcnow().isoformat()
+    with get_db_connection() as con:
+        updated = con.execute(
+            "UPDATE portal_users SET password_salt = ?, password_hash = ?, updated_at = ? WHERE id = ?",
+            (salt_hex, password_hash, now, user_id),
+        ).rowcount
+        con.execute("DELETE FROM portal_sessions WHERE user_id = ?", (user_id,))
+        con.commit()
+    if not updated:
+        return RedirectResponse("/admin?error=Пользователь+не+найден", status_code=303)
+    return admin_user_redirect(user_id, success=f"Пароль обновлен. Временный пароль: {password}")
+
+
+@app.post("/admin/users/{user_id}/revoke-access")
+async def admin_user_revoke_access(request: Request, user_id: int):
+    if not is_admin(request):
+        return admin_user_redirect(user_id, error="Нужна авторизация админа")
+    now = utcnow().isoformat()
+    with get_db_connection() as con:
+        user = con.execute("SELECT telegram_id FROM portal_users WHERE id = ?", (user_id,)).fetchone()
+        if not user:
+            return RedirectResponse("/admin?error=Пользователь+не+найден", status_code=303)
+        con.execute("UPDATE portal_users SET revoked_at = ?, updated_at = ? WHERE id = ?", (now, now, user_id))
+        con.execute("DELETE FROM portal_sessions WHERE user_id = ?", (user_id,))
+        failed_revocations = 0
+        if user["telegram_id"] is not None:
+            _, failed_revocations = deactivate_user_keys(con, int(user["telegram_id"]))
+        con.commit()
+    if failed_revocations:
+        return admin_user_redirect(user_id, error="Доступ отозван, но часть ключей не удалось отозвать на VPS")
+    return admin_user_redirect(user_id, success="Доступ пользователя к сайту отозван")
+
+
+@app.post("/admin/users/{user_id}/restore-access")
+async def admin_user_restore_access(request: Request, user_id: int):
+    if not is_admin(request):
+        return admin_user_redirect(user_id, error="Нужна авторизация админа")
+    now = utcnow().isoformat()
+    with get_db_connection() as con:
+        updated = con.execute(
+            "UPDATE portal_users SET revoked_at = NULL, updated_at = ? WHERE id = ?",
+            (now, user_id),
+        ).rowcount
+        con.commit()
+    if not updated:
+        return RedirectResponse("/admin?error=Пользователь+не+найден", status_code=303)
+    return admin_user_redirect(user_id, success="Доступ пользователя восстановлен")
+
+
 @app.get("/admin/invites", response_class=HTMLResponse)
 async def admin_invites_page(request: Request, error: str = "", created: str = ""):
     admin_password = get_admin_password()
