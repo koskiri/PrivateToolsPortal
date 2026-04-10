@@ -2165,7 +2165,7 @@ async def admin_user_page(request: Request, user_id: int, error: str = "", succe
         keys = con.execute(
             (
                 "SELECT id, kind, title, created_at, revoked_at "
-                "FROM vpn_keys WHERE telegram_id = ? "
+                "FROM vpn_keys WHERE telegram_id = ? AND revoked_at IS NULL "
                 "ORDER BY id DESC LIMIT 100"
             ),
             (user["telegram_id"],),
