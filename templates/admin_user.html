@@ -57,6 +57,7 @@
                     <div class="field"><div class="label">Срок подписки</div><div class="value">{{ user.active_until or '-' }}</div></div>
                     <div class="field"><div class="label">Лимит ключей</div><div class="value">{{ user.key_limit or 0 }}</div></div>
                     <div class="field"><div class="label">Баланс</div><div class="value">{{ user.wallet_balance or 0 }} ₽</div></div>
+                    <div class="field"><div class="label">VK</div><div class="value">{{ ('Привязан (ID: ' ~ user.vk_user_id ~ ')') if user.vk_user_id else 'Не привязан' }}</div></div>
                 </div>
 
                 <div class="grid" style="margin-top: 14px;">

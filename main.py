@@ -2106,13 +2106,15 @@ async def admin_home_page(request: Request, error: str = "", success: str = ""):
                 "SELECT u.id, u.login, u.telegram_id, u.created_at, u.revoked_at, "
                 "s.title AS subscription_title, s.active_until, s.key_limit, "
                 "COALESCE(k.active_keys, 0) AS active_keys, "
-                "COALESCE(w.balance_rub, 0) AS balance_rub "
+                "COALESCE(w.balance_rub, 0) AS balance_rub, "
+                "CASE WHEN vl.portal_user_id IS NULL THEN 0 ELSE 1 END AS vk_linked "
                 "FROM portal_users u "
                 "LEFT JOIN subscriptions s ON s.telegram_id = u.telegram_id "
                 "LEFT JOIN ("
                 "SELECT telegram_id, COUNT(*) AS active_keys FROM vpn_keys WHERE revoked_at IS NULL GROUP BY telegram_id"
                 ") k ON k.telegram_id = u.telegram_id "
                 "LEFT JOIN user_wallets w ON w.telegram_id = u.telegram_id "
+                "LEFT JOIN vk_links vl ON vl.portal_user_id = u.id "
                 "ORDER BY u.id DESC "
                 "LIMIT 300"
             )
@@ -2147,10 +2149,12 @@ async def admin_user_page(request: Request, user_id: int, error: str = "", succe
             (
                 "SELECT u.id, u.login, u.telegram_id, u.created_at, u.updated_at, u.revoked_at, "
                 "s.plan, s.title, s.price_rub, s.key_limit, s.active_until, "
-                "COALESCE(w.balance_rub, 0) AS wallet_balance "
+                "COALESCE(w.balance_rub, 0) AS wallet_balance, "
+                "vl.vk_user_id "
                 "FROM portal_users u "
                 "LEFT JOIN subscriptions s ON s.telegram_id = u.telegram_id "
                 "LEFT JOIN user_wallets w ON w.telegram_id = u.telegram_id "
+                "LEFT JOIN vk_links vl ON vl.portal_user_id = u.id "
                 "WHERE u.id = ?"
             ),
             (user_id,),

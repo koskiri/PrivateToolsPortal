@@ -53,6 +53,7 @@
                                 <th>Подписка</th>
                                 <th>Ключи</th>
                                 <th>Баланс</th>
+                                <th>VK</th>
                                 <th>Статус</th>
                                 <th></th>
                             </tr>
@@ -70,6 +71,13 @@
                                     <td>{{ user.active_keys or 0 }} / {{ user.key_limit or 0 }}</td>
                                     <td>{{ user.balance_rub or 0 }} ₽</td>
                                     <td>
+                                        {% if user.vk_linked %}
+                                            <span class="pill ok">Привязан</span>
+                                        {% else %}
+                                            <span class="pill bad">Не привязан</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
                                         {% if user.revoked_at %}
                                             <span class="pill bad">Отозван</span>
                                         {% else %}
@@ -79,7 +87,7 @@
                                     <td><a class="link" href="/admin/users/{{ user.id }}">Открыть профиль</a></td>
                                 </tr>
                             {% else %}
-                                <tr><td colspan="8">Пользователей пока нет.</td></tr>
+                                <tr><td colspan="9">Пользователей пока нет.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
