@@ -2562,7 +2562,7 @@ async def vk_callback(request: Request):
         return PlainTextResponse("ok")
 
     return PlainTextResponse("ok")
-
+ 
 @app.get("/", response_class=HTMLResponse)
 async def root_redirect() -> RedirectResponse:
     return RedirectResponse("/dashboard", status_code=303)
