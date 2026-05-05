@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import secrets
+import sqlite3
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dotenv import load_dotenv
-load_dotenv()
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -11,6 +10,8 @@ from app.core.config import BASE_DIR, SESSION_COOKIE
 from app.core.db import get_db_connection
 from app.db.migrations import ensure_auth_tables
 from app.routers import admin, auth, dashboard, vk
+
+load_dotenv()
 
 app = FastAPI(title="PrivateToolsPortal")
 

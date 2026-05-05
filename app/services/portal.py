@@ -14,8 +14,6 @@ from urllib import request as urllib_request
 
 from app.core.config import (
     APP_BASE_URL_ENV,
-    BASE_DIR,
-    MAX_SUPPORT_MESSAGE_LEN,
     SUBSCRIPTION_RENEW_DAYS,
     TARIFF_PRESETS,
     VK_BOT_LINK_ENV,
