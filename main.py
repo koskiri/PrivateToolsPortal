@@ -1414,6 +1414,7 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
         if not referral:
             code = secrets.token_urlsafe(12)
             now = utcnow().isoformat()
+            referral_preset = TARIFF_PRESETS["plan_5"]
             con.execute(
                 "INSERT INTO user_referrals (referrer_user_id, invite_code, created_at) VALUES (?, ?, ?)",
                 (user["id"], code, now),
@@ -1422,9 +1423,18 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
                 (
                     "INSERT INTO portal_invites "
                     "(invite_code, telegram_id, created_at, used_at, plan, title, key_limit, price_rub, duration_days, invited_by_user_id) "
-                    "VALUES (?, NULL, ?, NULL, NULL, 'Реферальная активация', NULL, NULL, NULL, ?)"
+                    "VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, ?, ?)"
                 ),
-                (code, now, user["id"]),
+                (
+                    code,
+                    now,
+                    referral_preset["plan"],
+                    "Реферальный тариф: 100 ₽ / 30 дней",
+                    referral_preset["key_limit"],
+                    referral_preset["price_rub"],
+                    referral_preset["duration_days"],
+                    user["id"],
+                ),
             )
             referral = {"invite_code": code, "created_at": now}
         referral_stats = con.execute(
