@@ -113,8 +113,8 @@ def create_referral_invite(con: sqlite3.Connection, user_id: int) -> dict[str, s
     con.execute(
         (
             "INSERT INTO portal_invites "
-            "(invite_code, telegram_id, created_at, used_at, plan, title, key_limit, price_rub, duration_days, invited_by_user_id) "
-            "VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, ?, ?)"
+            "(invite_code, telegram_id, created_at, used_at, plan, title, key_limit, price_rub, duration_days, invited_by_user_id, created_by_user_id) "
+            "VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, ?, ?, ?)"
         ),
         (
             code,
@@ -125,9 +125,22 @@ def create_referral_invite(con: sqlite3.Connection, user_id: int) -> dict[str, s
             referral_preset["price_rub"],
             referral_preset["duration_days"],
             user_id,
+            user_id,
         ),
     )
     return {"invite_code": code, "created_at": now}
+
+
+def get_user_invite_stats(con: sqlite3.Connection, user_id: int) -> sqlite3.Row:
+    return con.execute(
+        (
+            "SELECT COUNT(*) AS total, "
+            "SUM(CASE WHEN used_at IS NOT NULL THEN 1 ELSE 0 END) AS used, "
+            "SUM(CASE WHEN used_at IS NULL THEN 1 ELSE 0 END) AS available "
+            "FROM portal_invites WHERE invited_by_user_id = ?"
+        ),
+        (user_id,),
+    ).fetchone()
 
 
 def get_db_connection() -> sqlite3.Connection:
@@ -303,6 +316,15 @@ def ensure_referral_tables(con: sqlite3.Connection) -> None:
         )
         """
     )
+    invite_columns = {row["name"] for row in con.execute("PRAGMA table_info(portal_invites)").fetchall()}
+    if "created_by_user_id" not in invite_columns:
+        con.execute("ALTER TABLE portal_invites ADD COLUMN created_by_user_id INTEGER")
+    if "used_by_user_id" not in invite_columns:
+        con.execute("ALTER TABLE portal_invites ADD COLUMN used_by_user_id INTEGER")
+
+    user_columns = {row["name"] for row in con.execute("PRAGMA table_info(portal_users)").fetchall()}
+    if "invited_by_user_id" not in user_columns:
+        con.execute("ALTER TABLE portal_users ADD COLUMN invited_by_user_id INTEGER")
 
 def migrate_telegram_columns(con: sqlite3.Connection) -> None:
     users_telegram_notnull = con.execute("PRAGMA table_info(portal_users)").fetchall()
@@ -376,6 +398,10 @@ def migrate_telegram_columns(con: sqlite3.Connection) -> None:
         con.execute("ALTER TABLE portal_invites ADD COLUMN duration_days INTEGER")
     if "invited_by_user_id" not in invite_columns:
         con.execute("ALTER TABLE portal_invites ADD COLUMN invited_by_user_id INTEGER")
+    if "created_by_user_id" not in invite_columns:
+        con.execute("ALTER TABLE portal_invites ADD COLUMN created_by_user_id INTEGER")
+    if "used_by_user_id" not in invite_columns:
+        con.execute("ALTER TABLE portal_invites ADD COLUMN used_by_user_id INTEGER")
 
     # Portal users can register without Telegram. To keep compatibility with
     # legacy tables keyed by telegram_id, assign deterministic synthetic IDs.
@@ -1297,6 +1323,7 @@ async def activate_submit(
     login: str = Form(...),
     password: str = Form(...),
 ):
+    current_user = get_current_user(request)
     login = login.strip()
     code = code.strip()
 
@@ -1324,6 +1351,13 @@ async def activate_submit(
 
         if is_invite_used(invite):
             return RedirectResponse("/login?invite_used=1&reason=invite_used", status_code=303)
+        if current_user and int(current_user["id"]) == int(invite["invited_by_user_id"] or -1):
+            return templates.TemplateResponse(
+                request=request,
+                name="activate.html",
+                context={"code": code, "invite": None, "error": "Нельзя использовать собственный инвайт", "success": None},
+                status_code=403,
+            )
 
         duplicate_login = con.execute(
             "SELECT id FROM portal_users WHERE login = ?",
@@ -1361,8 +1395,12 @@ async def activate_submit(
                 (resolved_telegram_id, invite["id"]),
             )
         con.execute(
-            "UPDATE portal_invites SET used_at = ? WHERE id = ?",
-            (now, invite["id"]),
+            "UPDATE portal_invites SET used_at = ?, used_by_user_id = ? WHERE id = ?",
+            (now, user_id, invite["id"]),
+        )
+        con.execute(
+            "UPDATE portal_users SET invited_by_user_id = ? WHERE id = ?",
+            (invite["invited_by_user_id"], user_id),
         )
         if invite["key_limit"] is not None:
             duration_days = invite["duration_days"] or 30
@@ -1442,24 +1480,15 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             (user["telegram_id"],),
         ).fetchall()
         vk_link = get_vk_link_by_portal_user(con, int(user["id"]))
-        referral = con.execute(
-            "SELECT invite_code, created_at FROM user_referrals WHERE referrer_user_id = ?",
-            (user["id"],),
-        ).fetchone()
-        if not referral:
-            referral = create_referral_invite(con, int(user["id"]))
-            con.execute(
-                "INSERT INTO user_referrals (referrer_user_id, invite_code, created_at) VALUES (?, ?, ?)",
-                (user["id"], referral["invite_code"], referral["created_at"]),
-            )
-        referral_stats = con.execute(
+        referral_stats = get_user_invite_stats(con, int(user["id"]))
+        invite_list = con.execute(
             (
-                "SELECT COUNT(*) AS total, "
-                "SUM(CASE WHEN used_at IS NOT NULL THEN 1 ELSE 0 END) AS activated "
-                "FROM portal_invites WHERE invited_by_user_id = ?"
+                "SELECT invite_code, created_at, used_at "
+                "FROM portal_invites WHERE invited_by_user_id = ? "
+                "ORDER BY datetime(created_at) DESC"
             ),
             (user["id"],),
-        ).fetchone()
+        ).fetchall()
         con.commit()
 
     support_messages_by_ticket: dict[int, list[sqlite3.Row]] = {}
@@ -1494,8 +1523,9 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             "support_status_label": format_support_status,
             "vk_bot_link": get_vk_bot_link(),
             "vk_linked": vk_link is not None,
-            "referral_link": build_activate_link(referral["invite_code"]),
+            "invite_list": invite_list,
             "referral_stats": referral_stats,
+            "invite_limit_reached": int(referral_stats["available"] or 0) >= 10,
         },
     )
 
@@ -1506,6 +1536,12 @@ async def dashboard_create_referral_invite(request: Request):
         return RedirectResponse("/login", status_code=303)
 
     with get_db_connection() as con:
+        stats = get_user_invite_stats(con, int(user["id"]))
+        if int(stats["available"] or 0) >= 10:
+            return RedirectResponse(
+                "/dashboard?error=У+вас+уже+есть+10+неиспользованных+инвайт-ссылок.+Отправьте+одну+из+них+другу+или+дождитесь+её+использования.",
+                status_code=303,
+            )
         referral = create_referral_invite(con, int(user["id"]))
         con.execute(
             "UPDATE user_referrals SET invite_code = ?, created_at = ? WHERE referrer_user_id = ?",
