@@ -88,6 +88,17 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def is_invite_used(invite_row: sqlite3.Row | None) -> bool:
+    if not invite_row:
+        return False
+    used_at = invite_row["used_at"]
+    if used_at is None:
+        return False
+    if isinstance(used_at, str):
+        return bool(used_at.strip())
+    return True
+
+
 def build_activate_link(invite_code: str) -> str:
     base_url = (os.getenv(APP_BASE_URL_ENV, "") or "").strip().rstrip("/")
     if not base_url:
@@ -1245,7 +1256,7 @@ async def activate_page(request: Request, code: str = ""):
 
         if not invite_info:
             error = "Инвайт не найден"
-        elif invite_info["used_at"]:
+        elif is_invite_used(invite_info):
             return RedirectResponse("/login?invite_used=1", status_code=303)
 
     return templates.TemplateResponse(
@@ -1287,7 +1298,7 @@ async def activate_submit(
                 status_code=404,
             )
 
-        if invite["used_at"] is not None:
+        if is_invite_used(invite):
             return RedirectResponse("/login?invite_used=1", status_code=303)
 
         duplicate_login = con.execute(
