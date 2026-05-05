@@ -145,6 +145,14 @@
             line-height: 1.45;
         }
 
+        .invite-list-panel {
+            margin-top: 10px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--surface-muted);
+        }
+
         .keys-list {
             display: grid;
             gap: 10px;
@@ -483,33 +491,40 @@
                 Создайте одноразовую инвайт-ссылку и отправьте её другу. После регистрации друга ссылка станет использованной.
             </div>
             <div class="helper" style="margin-bottom: 8px;">
-                Отправьте другу именно эту полную ссылку. Она нужна только для первой регистрации.
-            </div>
-            <div class="helper" style="margin-bottom: 8px;">
                 Создано инвайтов: {{ (referral_stats|default({})).total|default(0) }} ·
                 Использовано инвайтов: {{ (referral_stats|default({})).used|default(0) }} ·
                 Доступно для отправки: {{ (referral_stats|default({})).available|default(0) }}
             </div>
-            <form method="post" action="/dashboard/referral-invite" style="margin:0 0 12px 0;">
-                <button type="submit" {% if invite_limit_reached %}disabled{% endif %}>Создать инвайт-ссылку</button>
-            </form>
+            <div class="controls" style="margin-bottom: 12px;">
+                <form method="post" action="/dashboard/referral-invite" style="margin:0;">
+                    <button type="submit" {% if invite_limit_reached %}disabled{% endif %}>Создать инвайт-ссылку</button>
+                </form>
+                <button type="button" id="invite-toggle-btn">Показать приглашения</button>
+            </div>
             {% if invite_limit_reached %}
                 <div class="helper">У вас уже есть 10 неиспользованных инвайт-ссылок. Отправьте одну из них другу или дождитесь её использования.</div>
             {% endif %}
-            {% for inv in referral_invites %}
-                <div class="controls" style="margin-bottom: 8px; align-items: center;">
-                    <input id="invite-{{ loop.index }}" type="text" value="{{ inv.activate_link }}" readonly style="flex:1; min-width: 260px;" />
-                    <div class="helper" style="min-width: 210px;">
-                        {% if inv.used_at %}Использована{% else %}Не использована{% endif %}<br />
-                        Создана: {{ inv.created_at[:16] }}{% if inv.used_at %}<br />Использована: {{ inv.used_at[:16] }}{% endif %}
-                    </div>
-                    {% if not inv.used_at %}
-                        <button type="button" class="copy-key-btn" data-copy-target="invite-{{ loop.index }}">Скопировать</button>
-                    {% endif %}
+            <div id="invite-list-panel" class="invite-list-panel hidden">
+                <div class="helper" style="margin: 0 0 8px 0;">
+                    Отправьте другу именно эту полную ссылку. Она нужна только для первой регистрации.
                 </div>
-            {% else %}
-                <div class="helper">Вы пока не создавали инвайт-ссылки.</div>
-            {% endfor %}
+                {% for inv in referral_invites %}
+                    <div class="controls" style="margin-bottom: 8px; align-items: center;">
+                        <input id="invite-{{ loop.index }}" type="text" value="{{ inv.activate_link }}" readonly style="flex:1; min-width: 260px;" />
+                        <div class="helper" style="min-width: 210px;">
+                            {% if inv.used_at %}Использована{% else %}Не использована{% endif %}<br />
+                            Создана: {{ inv.created_at[:16] }}{% if inv.used_at %}<br />Использована: {{ inv.used_at[:16] }}{% endif %}
+                        </div>
+                        {% if not inv.used_at %}
+                            <button type="button" class="copy-key-btn" data-copy-target="invite-{{ loop.index }}">Скопировать</button>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <div class="helper">Вы пока не создавали инвайт-ссылки.</div>
+                {% endfor %}
+            </div>
+        </div>
+
         </div>
 
         <div class="section">
@@ -747,6 +762,16 @@
                 });
             });
         });
+
+        const inviteToggleBtn = document.getElementById("invite-toggle-btn");
+        const inviteListPanel = document.getElementById("invite-list-panel");
+
+        if (inviteToggleBtn && inviteListPanel) {
+            inviteToggleBtn.addEventListener("click", () => {
+                const isHidden = inviteListPanel.classList.toggle("hidden");
+                inviteToggleBtn.textContent = isHidden ? "Показать приглашения" : "Скрыть приглашения";
+            });
+        }
 
         const copyButtons = document.querySelectorAll(".copy-key-btn");
         copyButtons.forEach((btn) => {
