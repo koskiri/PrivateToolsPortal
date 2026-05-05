@@ -88,6 +88,13 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def build_activate_link(invite_code: str) -> str:
+    base_url = (os.getenv(APP_BASE_URL_ENV, "") or "").strip().rstrip("/")
+    if not base_url:
+        base_url = "http://localhost:8000"
+    return f"{base_url}/activate?code={quote_plus(invite_code)}"
+
+
 def get_db_connection() -> sqlite3.Connection:
     try:
         con = sqlite3.connect(DB_PATH)
@@ -150,6 +157,7 @@ def ensure_auth_tables() -> None:
         ensure_support_tables(con)
         ensure_billing_tables(con)
         ensure_vk_tables(con)
+        ensure_referral_tables(con)
 
 
 def ensure_support_tables(con: sqlite3.Connection) -> None:
@@ -249,6 +257,18 @@ def ensure_vk_tables(con: sqlite3.Connection) -> None:
         """
     )
 
+def ensure_referral_tables(con: sqlite3.Connection) -> None:
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_referrals (
+            referrer_user_id INTEGER PRIMARY KEY,
+            invite_code TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(referrer_user_id) REFERENCES portal_users(id)
+        )
+        """
+    )
+
 def migrate_telegram_columns(con: sqlite3.Connection) -> None:
     users_telegram_notnull = con.execute("PRAGMA table_info(portal_users)").fetchall()
     invites_telegram_notnull = con.execute("PRAGMA table_info(portal_invites)").fetchall()
@@ -319,6 +339,8 @@ def migrate_telegram_columns(con: sqlite3.Connection) -> None:
         con.execute("ALTER TABLE portal_invites ADD COLUMN price_rub INTEGER")
     if "duration_days" not in invite_columns:
         con.execute("ALTER TABLE portal_invites ADD COLUMN duration_days INTEGER")
+    if "invited_by_user_id" not in invite_columns:
+        con.execute("ALTER TABLE portal_invites ADD COLUMN invited_by_user_id INTEGER")
 
     # Portal users can register without Telegram. To keep compatibility with
     # legacy tables keyed by telegram_id, assign deterministic synthetic IDs.
@@ -1385,6 +1407,34 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             (user["telegram_id"],),
         ).fetchall()
         vk_link = get_vk_link_by_portal_user(con, int(user["id"]))
+        referral = con.execute(
+            "SELECT invite_code, created_at FROM user_referrals WHERE referrer_user_id = ?",
+            (user["id"],),
+        ).fetchone()
+        if not referral:
+            code = secrets.token_urlsafe(12)
+            now = utcnow().isoformat()
+            con.execute(
+                "INSERT INTO user_referrals (referrer_user_id, invite_code, created_at) VALUES (?, ?, ?)",
+                (user["id"], code, now),
+            )
+            con.execute(
+                (
+                    "INSERT INTO portal_invites "
+                    "(invite_code, telegram_id, created_at, used_at, plan, title, key_limit, price_rub, duration_days, invited_by_user_id) "
+                    "VALUES (?, NULL, ?, NULL, NULL, 'Реферальная активация', NULL, NULL, NULL, ?)"
+                ),
+                (code, now, user["id"]),
+            )
+            referral = {"invite_code": code, "created_at": now}
+        referral_stats = con.execute(
+            (
+                "SELECT COUNT(*) AS total, "
+                "SUM(CASE WHEN used_at IS NOT NULL THEN 1 ELSE 0 END) AS activated "
+                "FROM portal_invites WHERE invited_by_user_id = ?"
+            ),
+            (user["id"],),
+        ).fetchone()
         con.commit()
 
     support_messages_by_ticket: dict[int, list[sqlite3.Row]] = {}
@@ -1419,6 +1469,8 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             "support_status_label": format_support_status,
             "vk_bot_link": get_vk_bot_link(),
             "vk_linked": vk_link is not None,
+            "referral_link": build_activate_link(referral["invite_code"]),
+            "referral_stats": referral_stats,
         },
     )
 
