@@ -1196,13 +1196,13 @@ def is_admin(request: Request) -> bool:
 
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, activated: int = 0, invite_used: int = 0):
+async def login_page(request: Request, activated: int = 0, invite_used: int = 0, reason: str = ""):
     if get_current_user(request):
         return RedirectResponse("/dashboard", status_code=303)
     success_message = "Аккаунт успешно активирован. Войдите под своим логином и паролем." if activated else None
     invite_used_message = (
         "Этот инвайт уже был использован. Если вы уже зарегистрированы — войдите в аккаунт."
-        if invite_used
+        if invite_used or reason == "invite_used"
         else None
     )
 
@@ -1257,7 +1257,7 @@ async def activate_page(request: Request, code: str = ""):
         if not invite_info:
             error = "Инвайт не найден"
         elif is_invite_used(invite_info):
-            return RedirectResponse("/login?invite_used=1", status_code=303)
+            return RedirectResponse("/login?invite_used=1&reason=invite_used", status_code=303)
 
     return templates.TemplateResponse(
         request=request,
@@ -1299,7 +1299,7 @@ async def activate_submit(
             )
 
         if is_invite_used(invite):
-            return RedirectResponse("/login?invite_used=1", status_code=303)
+            return RedirectResponse("/login?invite_used=1&reason=invite_used", status_code=303)
 
         duplicate_login = con.execute(
             "SELECT id FROM portal_users WHERE login = ?",
