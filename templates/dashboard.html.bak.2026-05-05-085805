@@ -153,8 +153,6 @@
             background: var(--surface-muted);
         }
 
-        .hidden { display: none !important; }
-
         .keys-list {
             display: grid;
             gap: 10px;
@@ -510,9 +508,9 @@
                 <div class="helper" style="margin: 0 0 8px 0;">
                     Отправьте другу именно эту полную ссылку. Она нужна только для первой регистрации.
                 </div>
-                {% for inv in referral_invites|default(invite_list|default([])) %}
+                {% for inv in referral_invites %}
                     <div class="controls" style="margin-bottom: 8px; align-items: center;">
-                        <input id="invite-{{ loop.index }}" type="text" value="{{ inv.activate_link|default('/activate?code=' ~ inv.invite_code) }}" readonly style="flex:1; min-width: 260px;" />
+                        <input id="invite-{{ loop.index }}" type="text" value="{{ inv.activate_link }}" readonly style="flex:1; min-width: 260px;" />
                         <div class="helper" style="min-width: 210px;">
                             {% if inv.used_at %}Использована{% else %}Не использована{% endif %}<br />
                             Создана: {{ inv.created_at[:16] }}{% if inv.used_at %}<br />Использована: {{ inv.used_at[:16] }}{% endif %}
@@ -525,6 +523,8 @@
                     <div class="helper">Вы пока не создавали инвайт-ссылки.</div>
                 {% endfor %}
             </div>
+        </div>
+
         </div>
 
         <div class="section">
