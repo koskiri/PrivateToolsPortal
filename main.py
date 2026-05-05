@@ -22,60 +22,39 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse,
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "bot.db"
-FALLBACK_DB_PATH = BASE_DIR / "bot.local.db"
-SESSION_COOKIE = "portal_session"
-SESSION_DAYS = 14
-ADMIN_COOKIE = "portal_admin_session"
-ADMIN_PASSWORD_ENV = "PORTAL_ADMIN_PASSWORD"
-TARIFF_PRESETS = {
-    "trial": {
-        "plan": "trial_1w_1key",
-        "title": "Бесплатно (1 ключ / 7 дней)",
-        "key_limit": 1,
-        "price_rub": 0,
-        "duration_days": 7,
-    },
-    "plan_5": {
-        "plan": "plan_5_keys",
-        "title": "100 ₽ / 5 ключей",
-        "key_limit": 5,
-        "price_rub": 100,
-        "duration_days": 30,
-    },
-    "plan_10": {
-        "plan": "plan_10_keys",
-        "title": "180 ₽ / 10 ключей",
-        "key_limit": 10,
-        "price_rub": 180,
-        "duration_days": 30,
-    },
-    "plan_40": {
-        "plan": "plan_40_keys",
-        "title": "300 ₽ / 40 ключей",
-        "key_limit": 40,
-        "price_rub": 300,
-        "duration_days": 30,
-    },
-}
-
-USER_TARIFF_CHOICES = ("plan_5", "plan_10", "plan_40")
-SUBSCRIPTION_RENEW_DAYS = 30
-MAX_SUPPORT_MESSAGE_LEN = 2000
-MAX_SUPPORT_SUBJECT_LEN = 160
-YOOKASSA_API_URL = "https://api.yookassa.ru/v3/payments"
-YOOKASSA_SHOP_ID_ENV = "YOOKASSA_SHOP_ID"
-YOOKASSA_SECRET_KEY_ENV = "YOOKASSA_SECRET_KEY"
-YOOKASSA_RETURN_URL_ENV = "YOOKASSA_RETURN_URL"
-VPS_ISSUER_URL_ENV = "VPS_ISSUER_URL"
-VPS_ISSUER_TOKEN_ENV = "VPS_ISSUER_TOKEN"
-VK_CONFIRMATION_CODE_ENV = "VK_CONFIRMATION_CODE"
-VK_SECRET_ENV = "VK_SECRET"
-VK_TOKEN_ENV = "VK_TOKEN"
-VK_BOT_LINK_ENV = "VK_BOT_LINK"
-APP_BASE_URL_ENV = "APP_BASE_URL"
-
+from app.core.config import (
+    ADMIN_COOKIE,
+    ADMIN_PASSWORD_ENV,
+    APP_BASE_URL_ENV,
+    BASE_DIR,
+    MAX_SUPPORT_MESSAGE_LEN,
+    MAX_SUPPORT_SUBJECT_LEN,
+    SESSION_COOKIE,
+    SESSION_DAYS,
+    SUBSCRIPTION_RENEW_DAYS,
+    TARIFF_PRESETS,
+    USER_TARIFF_CHOICES,
+    VK_BOT_LINK_ENV,
+    VK_CONFIRMATION_CODE_ENV,
+    VK_SECRET_ENV,
+    VK_TOKEN_ENV,
+    VPS_ISSUER_TOKEN_ENV,
+    VPS_ISSUER_URL_ENV,
+    YOOKASSA_API_URL,
+    YOOKASSA_RETURN_URL_ENV,
+    YOOKASSA_SECRET_KEY_ENV,
+    YOOKASSA_SHOP_ID_ENV,
+)
+from app.core.db import get_db_connection
+from app.core.security import (
+    create_password_hash,
+    get_admin_password,
+    get_current_user,
+    is_admin,
+    issue_session,
+    verify_password,
+)
+from app.db.migrations import ensure_auth_tables
 app = FastAPI(title="PrivateToolsPortal")
 
 static_dir = BASE_DIR / "static"
@@ -143,275 +122,14 @@ def get_user_invite_stats(con: sqlite3.Connection, user_id: int) -> sqlite3.Row:
     ).fetchone()
 
 
-def get_db_connection() -> sqlite3.Connection:
-    try:
-        con = sqlite3.connect(DB_PATH)
-    except sqlite3.OperationalError:
-        # In dev/staging bot.db can be a broken symlink to external storage.
-        # Fall back to a local SQLite file so the portal can still start.
-        if Path(DB_PATH).is_symlink():
-            con = sqlite3.connect(FALLBACK_DB_PATH)
-        else:
-            raise
-    con.row_factory = sqlite3.Row
-    return con
 
 
-def ensure_auth_tables() -> None:
-    with get_db_connection() as con:
-        con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS portal_users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER NOT NULL UNIQUE,
-                login TEXT NOT NULL UNIQUE,
-                password_salt TEXT NOT NULL,
-                password_hash TEXT NOT NULL,
-                revoked_at TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-
-        con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS portal_invites (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                invite_code TEXT NOT NULL UNIQUE,
-                telegram_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
-                used_at TEXT
-            )
-            """
-        )
-
-        con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS portal_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL UNIQUE,
-                user_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                FOREIGN KEY(user_id) REFERENCES portal_users(id)
-            )
-            """
-        )
-        # Legacy deployments can have strict telegram_id requirements.
-        # We keep the column for compatibility with subscription stats,
-        # but allow NULL so users/invites can exist without Telegram.
-        migrate_telegram_columns(con)
-        ensure_support_tables(con)
-        ensure_billing_tables(con)
-        ensure_vk_tables(con)
-        ensure_referral_tables(con)
 
 
-def ensure_support_tables(con: sqlite3.Connection) -> None:
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS support_tickets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            telegram_id INTEGER NOT NULL,
-            status TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            closed_at TEXT,
-            rating INTEGER,
-            feedback TEXT
-        )
-        """
-    )
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS support_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ticket_id INTEGER NOT NULL,
-            telegram_id INTEGER NOT NULL,
-            sender_role TEXT NOT NULL,
-            sender_id INTEGER NOT NULL,
-            text TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-        """
-    )
-    ticket_columns = {row["name"] for row in con.execute("PRAGMA table_info(support_tickets)").fetchall()}
-    if "subject" not in ticket_columns:
-        con.execute("ALTER TABLE support_tickets ADD COLUMN subject TEXT")
-    if "category" not in ticket_columns:
-        con.execute("ALTER TABLE support_tickets ADD COLUMN category TEXT")
-    if "priority" not in ticket_columns:
-        con.execute("ALTER TABLE support_tickets ADD COLUMN priority TEXT")
-    if "updated_at" not in ticket_columns:
-        con.execute("ALTER TABLE support_tickets ADD COLUMN updated_at TEXT")
 
-def ensure_billing_tables(con: sqlite3.Connection) -> None:
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_wallets (
-            telegram_id INTEGER PRIMARY KEY,
-            balance_rub INTEGER NOT NULL DEFAULT 0,
-            updated_at TEXT NOT NULL
-        )
-        """
-    )
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS payment_actions (
-            payment_id TEXT PRIMARY KEY,
-            telegram_id INTEGER NOT NULL,
-            action TEXT NOT NULL,
-            target_plan_key TEXT,
-            amount_rub INTEGER NOT NULL,
-            status TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-        """
-    )
 
-def ensure_vk_tables(con: sqlite3.Connection) -> None:
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS vk_links (
-            vk_user_id INTEGER PRIMARY KEY,
-            portal_user_id INTEGER NOT NULL UNIQUE,
-            telegram_id INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY(portal_user_id) REFERENCES portal_users(id)
-        )
-        """
-    )
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS vk_link_codes (
-            code TEXT PRIMARY KEY,
-            portal_user_id INTEGER NOT NULL,
-            telegram_id INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            expires_at TEXT NOT NULL,
-            used_at TEXT,
-            vk_user_id INTEGER,
-            FOREIGN KEY(portal_user_id) REFERENCES portal_users(id)
-        )
-        """
-    )
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS vk_subscription_reminders (
-            vk_user_id INTEGER PRIMARY KEY,
-            last_sent_at TEXT NOT NULL
-        )
-        """
-    )
 
-def ensure_referral_tables(con: sqlite3.Connection) -> None:
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_referrals (
-            referrer_user_id INTEGER PRIMARY KEY,
-            invite_code TEXT NOT NULL UNIQUE,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY(referrer_user_id) REFERENCES portal_users(id)
-        )
-        """
-    )
-    invite_columns = {row["name"] for row in con.execute("PRAGMA table_info(portal_invites)").fetchall()}
-    if "created_by_user_id" not in invite_columns:
-        con.execute("ALTER TABLE portal_invites ADD COLUMN created_by_user_id INTEGER")
-    if "used_by_user_id" not in invite_columns:
-        con.execute("ALTER TABLE portal_invites ADD COLUMN used_by_user_id INTEGER")
 
-    user_columns = {row["name"] for row in con.execute("PRAGMA table_info(portal_users)").fetchall()}
-    if "invited_by_user_id" not in user_columns:
-        con.execute("ALTER TABLE portal_users ADD COLUMN invited_by_user_id INTEGER")
-
-def migrate_telegram_columns(con: sqlite3.Connection) -> None:
-    users_telegram_notnull = con.execute("PRAGMA table_info(portal_users)").fetchall()
-    invites_telegram_notnull = con.execute("PRAGMA table_info(portal_invites)").fetchall()
-
-    need_users_migration = any(
-        row["name"] == "telegram_id" and row["notnull"] == 1 for row in users_telegram_notnull
-    )
-    need_invites_migration = any(
-        row["name"] == "telegram_id" and row["notnull"] == 1 for row in invites_telegram_notnull
-    )
-
-    if need_users_migration:
-        con.execute(
-            """
-            CREATE TABLE portal_users_new (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER UNIQUE,
-                login TEXT NOT NULL UNIQUE,
-                password_salt TEXT NOT NULL,
-                password_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        con.execute(
-            """
-            INSERT INTO portal_users_new (id, telegram_id, login, password_salt, password_hash, created_at, updated_at)
-            SELECT id, telegram_id, login, password_salt, password_hash, created_at, updated_at
-            FROM portal_users
-            """
-        )
-        con.execute("DROP TABLE portal_users")
-        con.execute("ALTER TABLE portal_users_new RENAME TO portal_users")
-    users_columns = {row["name"] for row in con.execute("PRAGMA table_info(portal_users)").fetchall()}
-    if "revoked_at" not in users_columns:
-        con.execute("ALTER TABLE portal_users ADD COLUMN revoked_at TEXT")
-
-    if need_invites_migration:
-        con.execute(
-            """
-            CREATE TABLE portal_invites_new (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                invite_code TEXT NOT NULL UNIQUE,
-                telegram_id INTEGER,
-                created_at TEXT NOT NULL,
-                used_at TEXT
-            )
-            """
-        )
-        con.execute(
-            """
-            INSERT INTO portal_invites_new (id, invite_code, telegram_id, created_at, used_at)
-            SELECT id, invite_code, telegram_id, created_at, used_at
-            FROM portal_invites
-            """
-        )
-        con.execute("DROP TABLE portal_invites")
-        con.execute("ALTER TABLE portal_invites_new RENAME TO portal_invites")
-    invite_columns = {row["name"] for row in con.execute("PRAGMA table_info(portal_invites)").fetchall()}
-    if "plan" not in invite_columns:
-        con.execute("ALTER TABLE portal_invites ADD COLUMN plan TEXT")
-    if "title" not in invite_columns:
-        con.execute("ALTER TABLE portal_invites ADD COLUMN title TEXT")
-    if "key_limit" not in invite_columns:
-        con.execute("ALTER TABLE portal_invites ADD COLUMN key_limit INTEGER")
-    if "price_rub" not in invite_columns:
-        con.execute("ALTER TABLE portal_invites ADD COLUMN price_rub INTEGER")
-    if "duration_days" not in invite_columns:
-        con.execute("ALTER TABLE portal_invites ADD COLUMN duration_days INTEGER")
-    if "invited_by_user_id" not in invite_columns:
-        con.execute("ALTER TABLE portal_invites ADD COLUMN invited_by_user_id INTEGER")
-    if "created_by_user_id" not in invite_columns:
-        con.execute("ALTER TABLE portal_invites ADD COLUMN created_by_user_id INTEGER")
-    if "used_by_user_id" not in invite_columns:
-        con.execute("ALTER TABLE portal_invites ADD COLUMN used_by_user_id INTEGER")
-
-    # Portal users can register without Telegram. To keep compatibility with
-    # legacy tables keyed by telegram_id, assign deterministic synthetic IDs.
-    con.execute(
-        """
-        UPDATE portal_users
-        SET telegram_id = -id
-        WHERE telegram_id IS NULL
-        """
-    )
 
 
 @app.on_event("startup")
@@ -420,53 +138,12 @@ def startup() -> None:
 
 
 
-def hash_password(password: str, salt_hex: str) -> str:
-    salt = bytes.fromhex(salt_hex)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 120_000)
-    return digest.hex()
 
 
-def create_password_hash(password: str) -> tuple[str, str]:
-    salt_hex = secrets.token_hex(16)
-    return salt_hex, hash_password(password, salt_hex)
 
 
-def verify_password(password: str, salt_hex: str, password_hash: str) -> bool:
-    candidate = hash_password(password, salt_hex)
-    return hmac.compare_digest(candidate, password_hash)
 
 
-def get_current_user(request: Request) -> Optional[sqlite3.Row]:
-    session_id = request.cookies.get(SESSION_COOKIE)
-    if not session_id:
-        return None
-
-    with get_db_connection() as con:
-        row = con.execute(
-            """
-            SELECT u.*, s.expires_at
-            FROM portal_sessions s
-            JOIN portal_users u ON u.id = s.user_id
-            WHERE s.session_id = ?
-            """,
-            (session_id,),
-        ).fetchone()
-
-        if not row:
-            return None
-
-        expires_at = datetime.fromisoformat(row["expires_at"])
-        if expires_at <= utcnow():
-            con.execute("DELETE FROM portal_sessions WHERE session_id = ?", (session_id,))
-            con.commit()
-            return None
-        
-        if row["revoked_at"] is not None:
-            con.execute("DELETE FROM portal_sessions WHERE session_id = ?", (session_id,))
-            con.commit()
-            return None
-
-        return row
     
 def get_or_create_wallet_balance(con: sqlite3.Connection, telegram_id: int) -> int:
     wallet = con.execute(
@@ -753,28 +430,7 @@ def fetch_yookassa_payment_status(payment_id: str) -> str:
     return body.get("status", "")
 
 
-def issue_session(response: RedirectResponse, user_id: int) -> None:
-    session_id = secrets.token_urlsafe(32)
-    created_at = utcnow()
-    expires_at = created_at + timedelta(days=SESSION_DAYS)
 
-    with get_db_connection() as con:
-        con.execute(
-            "INSERT INTO portal_sessions (session_id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-            (session_id, user_id, created_at.isoformat(), expires_at.isoformat()),
-        )
-        con.commit()
-
-    response.set_cookie(
-        key=SESSION_COOKIE,
-        value=session_id,
-        httponly=True,
-        samesite="lax",
-        max_age=SESSION_DAYS * 24 * 60 * 60,
-    )
-
-def get_admin_password() -> str:
-    return os.getenv(ADMIN_PASSWORD_ENV, "").strip()
 
 def get_vk_confirmation_code() -> str:
     return os.getenv(VK_CONFIRMATION_CODE_ENV, "").strip()
@@ -1229,20 +885,6 @@ def handle_vk_message_new(event: dict) -> None:
     )
 
 
-def is_admin(request: Request) -> bool:
-    admin_password = get_admin_password()
-    cookie_value = request.cookies.get(ADMIN_COOKIE, "")
-
-    if not admin_password or not cookie_value:
-        return False
-
-    try:
-        return hmac.compare_digest(
-            cookie_value.encode("utf-8"),
-            admin_password.encode("utf-8"),
-        )
-    except Exception:
-        return False
 
 
 @app.get("/login", response_class=HTMLResponse)
