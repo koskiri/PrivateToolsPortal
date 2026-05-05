@@ -483,6 +483,9 @@
                 Создайте одноразовую инвайт-ссылку и отправьте её другу. После регистрации друга ссылка станет использованной.
             </div>
             <div class="helper" style="margin-bottom: 8px;">
+                Отправьте другу именно эту полную ссылку. Она нужна только для первой регистрации.
+            </div>
+            <div class="helper" style="margin-bottom: 8px;">
                 Создано инвайтов: {{ (referral_stats|default({})).total|default(0) }} ·
                 Использовано инвайтов: {{ (referral_stats|default({})).used|default(0) }} ·
                 Доступно для отправки: {{ (referral_stats|default({})).available|default(0) }}
@@ -493,9 +496,9 @@
             {% if invite_limit_reached %}
                 <div class="helper">У вас уже есть 10 неиспользованных инвайт-ссылок. Отправьте одну из них другу или дождитесь её использования.</div>
             {% endif %}
-            {% for inv in invite_list %}
+            {% for inv in referral_invites %}
                 <div class="controls" style="margin-bottom: 8px; align-items: center;">
-                    <input id="invite-{{ loop.index }}" type="text" value="{{ '/activate?code=' ~ inv.invite_code }}" readonly style="flex:1; min-width: 260px;" />
+                    <input id="invite-{{ loop.index }}" type="text" value="{{ inv.activate_link }}" readonly style="flex:1; min-width: 260px;" />
                     <div class="helper" style="min-width: 210px;">
                         {% if inv.used_at %}Использована{% else %}Не использована{% endif %}<br />
                         Создана: {{ inv.created_at[:16] }}{% if inv.used_at %}<br />Использована: {{ inv.used_at[:16] }}{% endif %}

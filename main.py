@@ -1491,6 +1491,16 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
         ).fetchall()
         con.commit()
 
+    referral_invites = [
+        {
+            "invite_code": inv["invite_code"],
+            "activate_link": build_activate_link(inv["invite_code"]),
+            "created_at": inv["created_at"],
+            "used_at": inv["used_at"],
+        }
+        for inv in invite_list
+    ]
+
     support_messages_by_ticket: dict[int, list[sqlite3.Row]] = {}
     for msg in support_messages:
         support_messages_by_ticket.setdefault(int(msg["ticket_id"]), []).append(msg)
@@ -1524,6 +1534,7 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             "vk_bot_link": get_vk_bot_link(),
             "vk_linked": vk_link is not None,
             "invite_list": invite_list,
+            "referral_invites": referral_invites,
             "referral_stats": referral_stats,
             "invite_limit_reached": int(referral_stats["available"] or 0) >= 10,
         },
