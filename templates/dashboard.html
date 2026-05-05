@@ -485,6 +485,9 @@
             <div class="controls" style="margin-bottom: 8px;">
                 <input id="referral-link" type="text" value="{{ referral_link }}" readonly style="flex:1; min-width: 260px;" />
                 <button type="button" class="copy-key-btn" data-copy-target="referral-link">Копировать ссылку</button>
+                <form method="post" action="/dashboard/referral-invite" style="margin:0;">
+                    <button type="submit">Сгенерировать новую ссылку</button>
+                </form>
             </div>
             <div class="helper">
                 Приглашений создано: {{ (referral_stats|default({})).total|default(0) }} · Активировано: {{ (referral_stats|default({})).activated|default(0) }}

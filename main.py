@@ -106,6 +106,30 @@ def build_activate_link(invite_code: str) -> str:
     return f"{base_url}/activate?code={quote_plus(invite_code)}"
 
 
+def create_referral_invite(con: sqlite3.Connection, user_id: int) -> dict[str, str]:
+    code = secrets.token_urlsafe(12)
+    now = utcnow().isoformat()
+    referral_preset = TARIFF_PRESETS["plan_5"]
+    con.execute(
+        (
+            "INSERT INTO portal_invites "
+            "(invite_code, telegram_id, created_at, used_at, plan, title, key_limit, price_rub, duration_days, invited_by_user_id) "
+            "VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, ?, ?)"
+        ),
+        (
+            code,
+            now,
+            referral_preset["plan"],
+            "Реферальный тариф: 100 ₽ / 30 дней",
+            referral_preset["key_limit"],
+            referral_preset["price_rub"],
+            referral_preset["duration_days"],
+            user_id,
+        ),
+    )
+    return {"invite_code": code, "created_at": now}
+
+
 def get_db_connection() -> sqlite3.Connection:
     try:
         con = sqlite3.connect(DB_PATH)
@@ -1423,31 +1447,11 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             (user["id"],),
         ).fetchone()
         if not referral:
-            code = secrets.token_urlsafe(12)
-            now = utcnow().isoformat()
-            referral_preset = TARIFF_PRESETS["plan_5"]
+            referral = create_referral_invite(con, int(user["id"]))
             con.execute(
                 "INSERT INTO user_referrals (referrer_user_id, invite_code, created_at) VALUES (?, ?, ?)",
-                (user["id"], code, now),
+                (user["id"], referral["invite_code"], referral["created_at"]),
             )
-            con.execute(
-                (
-                    "INSERT INTO portal_invites "
-                    "(invite_code, telegram_id, created_at, used_at, plan, title, key_limit, price_rub, duration_days, invited_by_user_id) "
-                    "VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, ?, ?)"
-                ),
-                (
-                    code,
-                    now,
-                    referral_preset["plan"],
-                    "Реферальный тариф: 100 ₽ / 30 дней",
-                    referral_preset["key_limit"],
-                    referral_preset["price_rub"],
-                    referral_preset["duration_days"],
-                    user["id"],
-                ),
-            )
-            referral = {"invite_code": code, "created_at": now}
         referral_stats = con.execute(
             (
                 "SELECT COUNT(*) AS total, "
@@ -1494,6 +1498,27 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             "referral_stats": referral_stats,
         },
     )
+
+@app.post("/dashboard/referral-invite")
+async def dashboard_create_referral_invite(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    with get_db_connection() as con:
+        referral = create_referral_invite(con, int(user["id"]))
+        con.execute(
+            "UPDATE user_referrals SET invite_code = ?, created_at = ? WHERE referrer_user_id = ?",
+            (referral["invite_code"], referral["created_at"], user["id"]),
+        )
+        if con.total_changes == 0:
+            con.execute(
+                "INSERT INTO user_referrals (referrer_user_id, invite_code, created_at) VALUES (?, ?, ?)",
+                (user["id"], referral["invite_code"], referral["created_at"]),
+            )
+        con.commit()
+
+    return RedirectResponse("/dashboard?success=Новая+инвайт-ссылка+создана", status_code=303)
 
 @app.post("/dashboard/vk-link")
 async def dashboard_vk_link(request: Request):
