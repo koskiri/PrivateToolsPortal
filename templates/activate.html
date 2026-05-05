@@ -14,11 +14,17 @@
         .success { color: #065f46; margin-bottom: 10px; }
         .hint { margin: 8px 0 16px; color: #374151; }
     </style>
+    {% if error and 'использ' in (error|lower) %}
+    <meta http-equiv="refresh" content="0;url=/login?invite_used=1" />
+    {% endif %}
 </head>
 <body>
     <div class="card">
         <h1>Активация аккаунта</h1>
 
+        {% if error and 'использ' in (error|lower) %}
+            <div class="hint">Перенаправляем на страницу входа…</div>
+        {% endif %}
         {% if success %}<div class="success">{{ success }}</div>{% endif %}
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
