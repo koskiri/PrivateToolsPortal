@@ -58,6 +58,50 @@
                     <div class="field"><div class="label">Лимит ключей</div><div class="value">{{ user.key_limit or 0 }}</div></div>
                     <div class="field"><div class="label">Баланс</div><div class="value">{{ user.wallet_balance or 0 }} ₽</div></div>
                     <div class="field"><div class="label">VK</div><div class="value">{{ ('Привязан (ID: ' ~ user.vk_user_id ~ ')') if user.vk_user_id else 'Не привязан' }}</div></div>
+                     <div class="field">
+                        <div class="label">Кто пригласил</div>
+                        <div class="value">
+                            {% if user.invited_by_user_id %}
+                                <a class="link" href="/admin/users/{{ user.invited_by_user_id }}">{{ user.invited_by_login or ('ID ' ~ user.invited_by_user_id) }}</a>
+                            {% else %}
+                                —
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="field"><div class="label">Приглашено друзей</div><div class="value">{{ (referral_stats.used or 0) if referral_stats else 0 }}</div></div>
+                    <div class="field"><div class="label">Инвайты</div><div class="value">{{ (referral_stats.total or 0) if referral_stats else 0 }} всего · {{ (referral_stats.available or 0) if referral_stats else 0 }} доступно</div></div>
+                </div>
+
+                <div class="card" style="margin-top:14px;">
+                    <h3 style="margin-top:0;">Приглашённые друзья</h3>
+                    <div class="muted" style="margin-bottom:8px;">
+                        Использованные инвайты считаются как приглашённые друзья.
+                    </div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Инвайт</th><th>Статус</th><th>Друг</th><th>Telegram ID</th><th>Создан</th><th>Использован</th></tr></thead>
+                            <tbody>
+                                {% for invite in invited_friends %}
+                                    <tr>
+                                        <td><code>{{ invite.invite_code }}</code></td>
+                                        <td>{{ 'Использован' if invite.used_at else 'Не использован' }}</td>
+                                        <td>
+                                            {% if invite.friend_id %}
+                                                <a class="link" href="/admin/users/{{ invite.friend_id }}">{{ invite.friend_login or ('ID ' ~ invite.friend_id) }}</a>
+                                            {% else %}
+                                                —
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ invite.friend_telegram_id or '—' }}</td>
+                                        <td>{{ invite.created_at }}</td>
+                                        <td>{{ invite.used_at or '—' }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr><td colspan="6">Пользователь пока не создавал реферальные инвайты.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <div class="grid" style="margin-top: 14px;">

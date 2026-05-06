@@ -157,10 +157,12 @@ async def admin_user_page(request: Request, user_id: int, error: str = "", succe
         user = con.execute(
             (
                 "SELECT u.id, u.login, u.telegram_id, u.created_at, u.updated_at, u.revoked_at, "
+                "u.invited_by_user_id, inviter.login AS invited_by_login, "
                 "s.plan, s.title, s.price_rub, s.key_limit, s.active_until, "
                 "COALESCE(w.balance_rub, 0) AS wallet_balance, "
                 "vl.vk_user_id "
                 "FROM portal_users u "
+                "LEFT JOIN portal_users inviter ON inviter.id = u.invited_by_user_id "
                 "LEFT JOIN subscriptions s ON s.telegram_id = u.telegram_id "
                 "LEFT JOIN user_wallets w ON w.telegram_id = u.telegram_id "
                 "LEFT JOIN vk_links vl ON vl.portal_user_id = u.id "
@@ -189,6 +191,29 @@ async def admin_user_page(request: Request, user_id: int, error: str = "", succe
             (user["telegram_id"],),
         ).fetchall() if user["telegram_id"] is not None else []
 
+        referral_stats = con.execute(
+            (
+                "SELECT COUNT(*) AS total, "
+                "SUM(CASE WHEN used_at IS NOT NULL AND used_at != '' THEN 1 ELSE 0 END) AS used, "
+                "SUM(CASE WHEN used_at IS NULL OR used_at = '' THEN 1 ELSE 0 END) AS available "
+                "FROM portal_invites WHERE invited_by_user_id = ?"
+            ),
+            (user_id,),
+        ).fetchone()
+
+        invited_friends = con.execute(
+            (
+                "SELECT pi.id, pi.invite_code, pi.created_at, pi.used_at, "
+                "friend.id AS friend_id, friend.login AS friend_login, friend.telegram_id AS friend_telegram_id "
+                "FROM portal_invites pi "
+                "LEFT JOIN portal_users friend ON friend.id = pi.used_by_user_id "
+                "WHERE pi.invited_by_user_id = ? "
+                "ORDER BY CASE WHEN pi.used_at IS NULL OR pi.used_at = '' THEN 1 ELSE 0 END, pi.used_at DESC, pi.created_at DESC "
+                "LIMIT 100"
+            ),
+            (user_id,),
+        ).fetchall()
+
     return templates.TemplateResponse(
         request=request,
         name="admin_user.html",
@@ -199,6 +224,8 @@ async def admin_user_page(request: Request, user_id: int, error: str = "", succe
             "user": user,
             "keys": keys,
             "support_tickets": support_tickets,
+            "referral_stats": referral_stats,
+            "invited_friends": invited_friends,
             "tariff_presets": TARIFF_PRESETS,
             "status_label": format_support_status,
         },
