@@ -120,7 +120,7 @@ async def admin_home_page(request: Request, error: str = "", success: str = ""):
                 "FROM portal_users u "
                 "LEFT JOIN subscriptions s ON s.telegram_id = u.telegram_id "
                 "LEFT JOIN ("
-                "SELECT telegram_id, COUNT(*) AS active_keys FROM vpn_keys WHERE revoked_at IS NULL GROUP BY telegram_id"
+                "SELECT telegram_id, COUNT(*) AS active_keys FROM vpn_keys WHERE revoked_at IS NULL OR revoked_at = '' GROUP BY telegram_id"
                 ") k ON k.telegram_id = u.telegram_id "
                 "LEFT JOIN user_wallets w ON w.telegram_id = u.telegram_id "
                 "LEFT JOIN vk_links vl ON vl.portal_user_id = u.id "
