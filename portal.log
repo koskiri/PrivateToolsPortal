@@ -1,10 +1,9 @@
 nohup: ignoring input
-INFO:     Started server process [2789261]
+INFO:     Started server process [2948656]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     162.158.183.47:0 - "GET /admin HTTP/1.0" 200 OK
-INFO:     162.158.183.47:0 - "GET /admin/users/14 HTTP/1.0" 200 OK
-INFO:     162.158.183.47:0 - "GET /admin/users/1 HTTP/1.0" 200 OK
-WARNING:  Invalid HTTP request received.
-INFO:     162.158.183.47:0 - "GET /admin/users/13 HTTP/1.0" 200 OK
+INFO:     162.158.183.48:0 - "POST /vk/callback HTTP/1.0" 200 OK
+[vk_callback] message_new error: no such table: keys
+INFO:     104.23.221.66:0 - "POST /vk/callback HTTP/1.0" 200 OK
+INFO:     104.23.221.66:0 - "POST /vk/callback HTTP/1.0" 200 OK

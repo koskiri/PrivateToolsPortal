@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
 import secrets
 import sqlite3
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from urllib import error as urllib_error
 from urllib.parse import quote_plus, urlencode
@@ -28,6 +29,11 @@ from app.core.config import (
     YOOKASSA_SHOP_ID_ENV,
 )
 from app.core.db import get_db_connection
+
+# Через сколько дней до окончания подписки отправлять VK-уведомление.
+# Измените значение здесь, если нужно другое время уведомлений.
+VK_SUBSCRIPTION_REMINDER_DAYS = 3
+VK_SUBSCRIPTION_REMINDER_INTERVAL_SECONDS = 24 * 60 * 60
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -725,15 +731,133 @@ def create_key_for_vk_user(con: sqlite3.Connection, telegram_id: int, key_kind: 
         f"✅ Ключ создан (ID {key_id}, тип {key_kind.upper()}).\n\n{payload_preview}{payload_suffix}",
     )
 
+def delete_user_key(user_id: int, key: str) -> bool:
+    """Удаляет ключ из таблицы keys, только если он принадлежит VK-пользователю."""
+    normalized_key = key.strip()
+    if not normalized_key:
+        return False
+
+    with get_db_connection() as con:
+        result = con.execute(
+            "DELETE FROM keys WHERE user_id = ? AND key = ?",
+            (user_id, normalized_key),
+        )
+        con.commit()
+    return result.rowcount > 0
+
+
+def handle_vk_delete_key_command(vk_user_id: int, text: str) -> bool:
+    """Обрабатывает команду /delete_key <ключ>. Возвращает True, если это была команда удаления."""
+    command, _, key = text.partition(" ")
+    if command.lower() != "/delete_key":
+        return False
+
+    key = key.strip()
+    if not key:
+        send_vk_message(vk_user_id, "Укажите ключ для удаления: /delete_key <ключ>")
+        return True
+
+    if delete_user_key(vk_user_id, key):
+        send_vk_message(vk_user_id, f"Ключ {key} успешно удалён ✅")
+    else:
+        send_vk_message(vk_user_id, f"Ключ {key} не найден или не принадлежит вам ❌")
+    return True
+
+
+def _table_columns(con: sqlite3.Connection, table_name: str) -> set[str]:
+    try:
+        return {str(row["name"]) for row in con.execute(f"PRAGMA table_info({table_name})").fetchall()}
+    except sqlite3.OperationalError:
+        return set()
+
+
+def _format_subscription_end(subscription_end: str) -> str:
+    try:
+        parsed = datetime.fromisoformat(subscription_end)
+        return parsed.strftime("%d.%m.%Y")
+    except (TypeError, ValueError):
+        try:
+            parsed_date = date.fromisoformat(str(subscription_end))
+            return parsed_date.strftime("%d.%m.%Y")
+        except (TypeError, ValueError):
+            return str(subscription_end)
+
+
+def get_subscriptions_ending_in_days(con: sqlite3.Connection, days_before_end: int) -> list[tuple[int, str]]:
+    """Возвращает VK user_id и дату окончания подписки для уведомлений."""
+    target_date = (utcnow().date() + timedelta(days=days_before_end)).isoformat()
+    subscription_columns = _table_columns(con, "subscriptions")
+
+    if {"user_id", "subscription_end"}.issubset(subscription_columns):
+        rows = con.execute(
+            """
+            SELECT user_id AS vk_user_id, subscription_end AS subscription_end
+            FROM subscriptions
+            WHERE date(subscription_end) = date(?)
+            """,
+            (target_date,),
+        ).fetchall()
+        return [(int(row["vk_user_id"]), str(row["subscription_end"])) for row in rows]
+
+    # Совместимость с текущей схемой портала: subscriptions.telegram_id/active_until + привязки VK.
+    if {"telegram_id", "active_until"}.issubset(subscription_columns):
+        rows = con.execute(
+            """
+            SELECT l.vk_user_id AS vk_user_id, s.active_until AS subscription_end
+            FROM subscriptions s
+            JOIN vk_links l ON l.telegram_id = s.telegram_id
+            WHERE date(s.active_until) = date(?)
+            """,
+            (target_date,),
+        ).fetchall()
+        return [(int(row["vk_user_id"]), str(row["subscription_end"])) for row in rows]
+
+    return []
+
+
+def send_subscription_expiration_reminders(days_before_end: int = VK_SUBSCRIPTION_REMINDER_DAYS) -> int:
+    """Отправляет VK-уведомления пользователям, чья подписка закончится через days_before_end дней."""
+    sent_count = 0
+    with get_db_connection() as con:
+        subscriptions = get_subscriptions_ending_in_days(con, days_before_end)
+
+    for user_id, subscription_end in subscriptions:
+        end_text = _format_subscription_end(subscription_end)
+        try:
+            send_vk_message(
+                user_id,
+                f"Ваша подписка скоро заканчивается ({end_text}). Не забудьте продлить её!",
+            )
+            sent_count += 1
+        except Exception as exc:
+            print(f"[vk_subscription_reminders] failed for user {user_id}: {exc}")
+    return sent_count
+
+
+async def run_vk_subscription_reminder_loop() -> None:
+    """Ежедневная фоновая проверка подписок при запущенном FastAPI."""
+    while True:
+        try:
+            # Для изменения времени уведомлений поменяйте VK_SUBSCRIPTION_REMINDER_DAYS выше.
+            send_subscription_expiration_reminders(VK_SUBSCRIPTION_REMINDER_DAYS)
+        except Exception as exc:
+            print(f"[vk_subscription_reminders] loop error: {exc}")
+        await asyncio.sleep(VK_SUBSCRIPTION_REMINDER_INTERVAL_SECONDS)
+
 
 def handle_vk_message_new(event: dict) -> None:
     obj = event.get("object") or {}
     message = obj.get("message") or {}
 
     vk_user_id = int(message.get("from_id") or 0)
-    text = (message.get("text") or "").strip().lower()
+    text_raw = (message.get("text") or "").strip()
+    text = text_raw.lower()
 
     if vk_user_id <= 0:
+        return
+
+    # Новые VK-команды добавляйте рядом с этим блоком, до общей логики меню.
+    if handle_vk_delete_key_command(vk_user_id, text_raw):
         return
 
     if text.startswith("привязать "):
@@ -791,7 +915,8 @@ def handle_vk_message_new(event: dict) -> None:
             "Возможности бота:\n"
             "• Кнопки для удобной навигации\n"
             "• Напоминания о скором окончании подписки\n"
-            "• Генерация ключей AWG/XRay\n\n"
+            "• Генерация ключей AWG/XRay\n"
+            "• Удаление ключа командой: /delete_key <ключ>\n\n"
             "Если аккаунт не привязан, отправьте: привязать ABC123",
             keyboard=build_vk_keyboard(linked=linked_account is not None),
         )

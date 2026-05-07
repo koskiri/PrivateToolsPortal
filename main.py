@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, Request
@@ -10,6 +12,7 @@ from app.core.config import BASE_DIR, SESSION_COOKIE
 from app.core.db import get_db_connection
 from app.db.migrations import ensure_auth_tables
 from app.routers import admin, auth, dashboard, vk
+from app.services.portal import run_vk_subscription_reminder_loop
 
 load_dotenv()
 
@@ -26,8 +29,20 @@ app.include_router(vk.router)
 
 
 @app.on_event("startup")
-def startup() -> None:
+async def startup() -> None:
     ensure_auth_tables()
+    app.state.vk_subscription_reminder_task = asyncio.create_task(run_vk_subscription_reminder_loop())
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    reminder_task = getattr(app.state, "vk_subscription_reminder_task", None)
+    if reminder_task is None:
+        return
+
+    reminder_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await reminder_task
 
 
 @app.get("/logout")
