@@ -548,6 +548,7 @@ def build_vk_keyboard(*, linked: bool) -> str:
                 {"action": {"type": "text", "label": "📊 Подписка"}, "color": "primary"},
                 {"action": {"type": "text", "label": "🔑 AWG ключ"}, "color": "positive"},
                 {"action": {"type": "text", "label": "🔑 XRay ключ"}, "color": "positive"},
+                {"action": {"type": "text", "label": "🗑 Удалить ключ"}, "color": "negative"}, 
             ]
         )
         buttons.append(
@@ -731,6 +732,98 @@ def create_key_for_vk_user(con: sqlite3.Connection, telegram_id: int, key_kind: 
         f"✅ Ключ создан (ID {key_id}, тип {key_kind.upper()}).\n\n{payload_preview}{payload_suffix}",
     )
 
+def build_delete_keys_keyboard(telegram_id: int) -> str:
+    """Создаёт клавиатуру VK с кнопками для удаления каждого активного ключа."""
+    with get_db_connection() as con:
+        keys = con.execute(
+            "SELECT id, title FROM vpn_keys WHERE telegram_id = ? AND revoked_at IS NULL",
+            (telegram_id,),
+        ).fetchall()
+
+    buttons = []
+    for key in keys:
+        buttons.append([
+            {"action": {"type": "text", "label": f"Удалить {key['title']}"}, "color": "negative"}
+        ])
+
+    if not buttons:
+        buttons.append([
+            {"action": {"type": "text", "label": "Нет активных ключей"}, "color": "secondary"}
+        ])
+
+    return json.dumps({"one_time": True, "buttons": buttons}, ensure_ascii=False)
+
+def delete_key_by_title(telegram_id: int, key_title: str) -> bool:
+    """Удаляет конкретный ключ по названию для пользователя. Возвращает True если удалено."""
+    with get_db_connection() as con:
+        row = con.execute(
+            "SELECT id FROM vpn_keys WHERE telegram_id = ? AND title = ? AND revoked_at IS NULL",
+            (telegram_id, key_title)
+        ).fetchone()
+        if not row:
+            return False
+
+        key_id = row["id"]
+        now_iso = datetime.now(timezone.utc).isoformat()
+        con.execute(
+            "UPDATE vpn_keys SET revoked_at = ?, payload = '' WHERE id = ?",
+            (now_iso, key_id)
+        )
+        con.commit()
+    return True
+
+def handle_vk_delete_key_button(vk_user_id: int, text: str) -> bool:
+    if not text.startswith("Удалить "):
+        return False
+
+    key_label = text.replace("Удалить ", "", 1).strip()
+
+    with get_db_connection() as con:
+        linked = con.execute(
+            "SELECT telegram_id FROM vk_links WHERE vk_user_id = ?",
+            (vk_user_id,),
+        ).fetchone()
+        if not linked:
+            send_vk_message(vk_user_id, "Сначала привяжите аккаунт.")
+            return True
+        telegram_id = linked["telegram_id"]
+
+        rows = con.execute(
+            "SELECT id, title FROM vpn_keys WHERE telegram_id = ? AND revoked_at IS NULL",
+            (telegram_id,),
+        ).fetchall()
+
+        matched = None
+        for r in rows:
+            title = r["title"].replace(" (VK)", "").strip()
+            if title in key_label:
+                matched = r
+                break
+
+        if not matched:
+            send_vk_message_with_keyboard(
+                vk_user_id,
+                f"Ключ {key_label} не найден или уже удалён ❌",
+                keyboard=build_vk_keyboard(linked=True),
+            )
+            return True
+
+        # удаляем ключ
+        now_iso = datetime.now(timezone.utc).isoformat()
+        con.execute(
+            "UPDATE vpn_keys SET revoked_at = ?, payload = '' WHERE id = ?",
+            (now_iso, matched["id"])
+        )
+        con.commit()
+
+    # ✅ Отправляем сообщение с клавиатурой
+    send_vk_message_with_keyboard(
+        vk_user_id,
+        f"Ключ {matched['title']} успешно удалён ✅",
+        keyboard=build_vk_keyboard(linked=True),
+    )
+    return True
+
 def delete_user_key(user_id: int, key: str) -> bool:
     """Удаляет ключ из таблицы keys, только если он принадлежит VK-пользователю."""
     normalized_key = key.strip()
@@ -856,20 +949,45 @@ def handle_vk_message_new(event: dict) -> None:
     if vk_user_id <= 0:
         return
 
-    # Новые VK-команды добавляйте рядом с этим блоком, до общей логики меню.
+    with get_db_connection() as con:
+        # Получаем привязанный telegram_id
+        linked_account = get_vk_linked_account(con, vk_user_id)
+        telegram_id = int(linked_account["telegram_id"]) if linked_account else None
+
+        # Отправка напоминания о подписке
+        if telegram_id:
+            maybe_send_vk_subscription_reminder(con, vk_user_id, telegram_id)
+
+    # 1️⃣ Проверяем, нажал ли пользователь на конкретный ключ для удаления
+    if handle_vk_delete_key_button(vk_user_id, text_raw):
+        return
+
+    # 2️⃣ Кнопка "Удалить ключ" — показываем список активных ключей
+    if text in {"🗑 удалить ключ"}:
+        if not telegram_id:
+            send_vk_message(vk_user_id, "Сначала привяжите аккаунт: привязать ABC123")
+            return
+        keyboard = build_delete_keys_keyboard(telegram_id)
+        send_vk_message_with_keyboard(
+            vk_user_id,
+            "Выберите ключ для удаления:",
+            keyboard=keyboard
+        )
+        return
+
+    # 3️⃣ Команда /delete_key <ключ>
     if handle_vk_delete_key_command(vk_user_id, text_raw):
         return
 
+    # 4️⃣ Привязка аккаунта
     if text.startswith("привязать "):
         code = text.replace("привязать", "", 1).strip().upper()
         if not code:
             send_vk_message(vk_user_id, "Укажите код: привязать ABC123")
             return
-
         with get_db_connection() as con:
             ok, message_text = consume_vk_link_code(con, code, vk_user_id)
             con.commit()
-
         send_vk_message_with_keyboard(
             vk_user_id,
             message_text,
@@ -883,12 +1001,7 @@ def handle_vk_message_new(event: dict) -> None:
     else:
         cabinet_url = "Ссылка на кабинет пока не настроена"
 
-    with get_db_connection() as con:
-        linked_account = get_vk_linked_account(con, vk_user_id)
-        if linked_account:
-            maybe_send_vk_subscription_reminder(con, vk_user_id, int(linked_account["telegram_id"]))
-            con.commit()
-
+    # 5️⃣ Основное меню
     if text in {"привет", "start", "/start", "начать", "меню"}:
         if linked_account:
             send_vk_message_with_keyboard(
@@ -905,10 +1018,16 @@ def handle_vk_message_new(event: dict) -> None:
             )
         return
 
+    # 6️⃣ Кабинет
     if text in {"кабинет", "сайт", "логин", "🌐 кабинет"}:
-        send_vk_message_with_keyboard(vk_user_id, f"Открыть кабинет: {cabinet_url}", keyboard=build_vk_keyboard(linked=linked_account is not None))
+        send_vk_message_with_keyboard(
+            vk_user_id,
+            f"Открыть кабинет: {cabinet_url}",
+            keyboard=build_vk_keyboard(linked=linked_account is not None),
+        )
         return
 
+    # 7️⃣ Помощь
     if text in {"помощь", "help", "/help", "❓ помощь", "🔗 привязать аккаунт"}:
         send_vk_message_with_keyboard(
             vk_user_id,
@@ -916,12 +1035,13 @@ def handle_vk_message_new(event: dict) -> None:
             "• Кнопки для удобной навигации\n"
             "• Напоминания о скором окончании подписки\n"
             "• Генерация ключей AWG/XRay\n"
-            "• Удаление ключа командой: /delete_key <ключ>\n\n"
+            "• Удаление ключа кнопкой или командой /delete_key <ключ>\n\n"
             "Если аккаунт не привязан, отправьте: привязать ABC123",
             keyboard=build_vk_keyboard(linked=linked_account is not None),
         )
         return
 
+    # 8️⃣ Статус подписки
     if text in {"📊 подписка"}:
         if not linked_account:
             send_vk_message_with_keyboard(
@@ -931,7 +1051,7 @@ def handle_vk_message_new(event: dict) -> None:
             )
             return
         with get_db_connection() as con:
-            stats = get_subscription_stats(con, int(linked_account["telegram_id"]))
+            stats = get_subscription_stats(con, telegram_id)
         if not stats:
             send_vk_message_with_keyboard(
                 vk_user_id,
@@ -946,6 +1066,7 @@ def handle_vk_message_new(event: dict) -> None:
         )
         return
 
+    # 9️⃣ Создание ключей AWG/XRay
     if text in {"🔑 awg ключ", "🔑 xray ключ"}:
         if not linked_account:
             send_vk_message_with_keyboard(
@@ -956,13 +1077,20 @@ def handle_vk_message_new(event: dict) -> None:
             return
         key_kind = "awg" if "awg" in text else "xray"
         with get_db_connection() as con:
-            ok, result_text = create_key_for_vk_user(con, int(linked_account["telegram_id"]), key_kind)
+            ok, result_text = create_key_for_vk_user(con, telegram_id, key_kind)
         send_vk_message_with_keyboard(
             vk_user_id,
             result_text,
             keyboard=build_vk_keyboard(linked=True),
         )
         return
+
+    # 10️⃣ Любой другой текст
+    send_vk_message_with_keyboard(
+        vk_user_id,
+        "Я не понял запрос. Нажмите кнопку ниже 👇",
+        keyboard=build_vk_keyboard(linked=linked_account is not None),
+    )
 
     send_vk_message_with_keyboard(
         vk_user_id,
