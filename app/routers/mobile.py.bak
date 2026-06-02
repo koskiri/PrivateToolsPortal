@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import secrets
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
+from app.core.db import get_db_connection
+from app.core.security import verify_password
+
+router = APIRouter(prefix="/api/mobile", tags=["mobile"])
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class MobileLoginRequest(BaseModel):
+    login: str
+    password: str
+
+
+class MobileUserResponse(BaseModel):
+    id: int
+    login: str
+    telegram_id: Optional[int] = None
+    subscription_active: bool
+    expires_at: Optional[str] = None
+
+
+class MobileLoginResponse(BaseModel):
+    access_token: str
+    user: MobileUserResponse
+
+
+@router.post("/auth/login", response_model=MobileLoginResponse)
+def mobile_login(data: MobileLoginRequest):
+    login = data.login.strip()
+
+    with get_db_connection() as con:
+        user = con.execute(
+            "SELECT * FROM portal_users WHERE login = ?",
+            (login,),
+        ).fetchone()
+
+        if not user or not verify_password(
+            data.password,
+            user["password_salt"],
+            user["password_hash"],
+        ):
+            raise HTTPException(status_code=401, detail="Invalid login or password")
+
+        if user["revoked_at"] is not None:
+            raise HTTPException(status_code=403, detail="Account disabled")
+
+        sub = con.execute(
+            "SELECT * FROM subscriptions WHERE telegram_id = ?",
+            (user["telegram_id"],),
+        ).fetchone()
+
+        subscription_active = False
+        expires_at = None
+
+        if sub and sub["active_until"]:
+            expires_at = sub["active_until"]
+            try:
+                subscription_active = datetime.fromisoformat(expires_at) > utcnow()
+            except Exception:
+                subscription_active = False
+
+        token = secrets.token_urlsafe(32)
+        now = utcnow()
+        token_expires_at = now + timedelta(days=30)
+
+        con.execute(
+            """
+            INSERT INTO portal_sessions (session_id, user_id, created_at, expires_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                token,
+                user["id"],
+                now.isoformat(),
+                token_expires_at.isoformat(),
+            ),
+        )
+        con.commit()
+
+    return MobileLoginResponse(
+        access_token=token,
+        user=MobileUserResponse(
+            id=user["id"],
+            login=user["login"],
+            telegram_id=user["telegram_id"],
+            subscription_active=subscription_active,
+            expires_at=expires_at,
+        ),
+    )
