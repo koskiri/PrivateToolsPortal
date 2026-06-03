@@ -1,0 +1,73 @@
+{% extends "new/base.html" %}
+{% block title %}Главная — OnlyUs{% endblock %}
+{% block heading %}Главная{% endblock %}
+{% block content %}
+<section class="grid two-columns">
+    <article class="card hero-card">
+        <div class="card-head">
+            <div>
+                <p class="eyebrow">Подписка</p>
+                <h2>{{ 'Подписка активна' if subscription.active else 'Подписка неактивна' }}</h2>
+            </div>
+            <span class="pill {{ 'success' if subscription.active else 'muted' }}">{{ 'Активна' if subscription.active else 'Неактивна' }}</span>
+        </div>
+        <div class="metric-row">
+            <div><span>Роль</span><strong>{{ role_label }}</strong></div>
+            <div><span>Осталось дней</span><strong>{{ subscription.days_left }}</strong></div>
+            <div><span>Действует до</span><strong>{{ subscription.active_until }}</strong></div>
+        </div>
+        <form method="post" action="/dashboard/subscription">
+            <input type="hidden" name="action" value="renew" />
+            <button class="button primary" type="submit">Продлить подписку</button>
+        </form>
+    </article>
+
+    <article class="card status-card">
+        <p class="eyebrow">Статус аккаунта</p>
+        <h2>{{ role_label }}</h2>
+        {% if is_sponsor %}
+            <p>У вас доступно приглашений: <strong>{{ invite_stats.available }}</strong>.</p>
+            <a class="button primary" href="/new-ui/invites">Управление приглашениями</a>
+        {% else %}
+            <p>Обычный аккаунт OnlyUs. Спонсоры могут делиться приглашениями с близкими.</p>
+            <button class="button secondary" type="button" disabled>Стать спонсором · скоро</button>
+        {% endif %}
+    </article>
+</section>
+
+<section class="card section-card">
+    <div class="section-title">
+        <div><p class="eyebrow">Подключение</p><h2>Выберите устройство</h2></div>
+        <p>Инструкции откроются здесь после подключения материалов.</p>
+    </div>
+    <div class="platform-scroll">
+        {% for platform in ['Android', 'iPhone', 'Windows', 'MacOS'] %}
+            <article class="platform-card">
+                <span class="platform-icon">{{ platform[0] }}</span>
+                <h3>{{ platform }}</h3>
+                <button class="button ghost" type="button" disabled>Открыть инструкцию · скоро</button>
+            </article>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="grid two-columns">
+    <article class="card">
+        <p class="eyebrow">Быстрые действия</p>
+        <div class="action-list">
+            <button class="action-button" type="button" disabled><span>Показать QR</span><small>Скоро</small></button>
+            <button class="action-button" type="button" disabled><span>Информация о подписке</span><small>{{ subscription.title }}</small></button>
+        </div>
+    </article>
+
+    <article class="card support-card">
+        <p class="eyebrow">Поддержка</p>
+        <h2>Мы рядом</h2>
+        <p>Напишите нам, если нужна помощь с оплатой, входом или подключением.</p>
+        <div class="button-row">
+            <a class="button secondary" href="{{ telegram_support_link }}" aria-disabled="true">Telegram · скоро</a>
+            <a class="button secondary" href="{{ vk_bot_link }}">VK</a>
+        </div>
+    </article>
+</section>
+{% endblock %}

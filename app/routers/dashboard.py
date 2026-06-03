@@ -153,6 +153,130 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
         },
     )
 
+def _format_new_ui_date(value: str | None) -> str:
+    if not value:
+        return "—"
+    try:
+        return datetime.fromisoformat(value).astimezone(timezone.utc).strftime("%d.%m.%Y")
+    except ValueError:
+        return value[:10]
+
+
+def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectResponse:
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    with get_db_connection() as con:
+        stats = con.execute(
+            (
+                "SELECT s.plan, s.title, s.key_limit, s.active_until, COALESCE(k.active_keys, 0) AS active_keys "
+                "FROM subscriptions s "
+                "LEFT JOIN ("
+                "SELECT telegram_id, COUNT(*) AS active_keys FROM vpn_keys WHERE revoked_at IS NULL GROUP BY telegram_id"
+                ") k ON k.telegram_id = s.telegram_id "
+                "WHERE s.telegram_id = ?"
+            ),
+            (user["telegram_id"],),
+        ).fetchone()
+        referral_stats = get_user_invite_stats(con, int(user["id"]))
+        invite_rows = con.execute(
+            (
+                "SELECT i.invite_code, i.created_at, i.used_at, u.login AS used_by_login "
+                "FROM portal_invites i "
+                "LEFT JOIN portal_users u ON u.id = i.used_by_user_id "
+                "WHERE i.invited_by_user_id = ? "
+                "ORDER BY datetime(i.created_at) DESC"
+            ),
+            (user["id"],),
+        ).fetchall()
+        vk_link = get_vk_link_by_portal_user(con, int(user["id"]))
+
+    now = utcnow()
+    active_until = None
+    subscription_active = False
+    days_left = 0
+    if stats and stats["active_until"]:
+        active_until = datetime.fromisoformat(stats["active_until"])
+        subscription_active = active_until > now
+        if subscription_active:
+            days_left = int(((active_until - now).total_seconds() - 1) // 86400) + 1
+
+    total_invites = int(referral_stats["total"] or 0)
+    used_invites = int(referral_stats["used"] or 0)
+    available_invites = int(referral_stats["available"] or 0)
+    # В текущей модели данных нет отдельного флага роли спонсора.
+    # Для изолированного тестового UI считаем спонсором пользователя, у которого уже есть приглашения.
+    is_sponsor = total_invites > 0 or available_invites > 0
+
+    invite_history = [
+        {
+            "user": row["used_by_login"] or "Ожидает регистрации",
+            "registered_at": _format_new_ui_date(row["used_at"]),
+            "status": "Активен" if row["used_at"] else "Ожидает",
+            "invite_link": build_activate_link(row["invite_code"]),
+        }
+        for row in invite_rows
+    ]
+    primary_invite_link = invite_history[0]["invite_link"] if invite_history else ""
+
+    login = user["login"] or ""
+    # В portal_users нет отдельных полей email/telegram username; показываем безопасные значения без технических ID.
+    profile = {
+        "email": login if "@" in login else "Не указан",
+        "telegram": "Подключен" if user["telegram_id"] and int(user["telegram_id"]) > 0 else "Не указан",
+        "vk": "Подключен" if vk_link else "Не подключен",
+    }
+
+    return {
+        "user": user,
+        "active_page": active_page,
+        "stats": stats,
+        "subscription": {
+            "active": subscription_active,
+            "title": (stats["title"] if stats else None) or "Подписка не выбрана",
+            "active_until": _format_new_ui_date(active_until.isoformat() if active_until else None),
+            "days_left": days_left,
+        },
+        "role_label": "Спонсор" if is_sponsor else "Пользователь",
+        "is_sponsor": is_sponsor,
+        "invite_stats": {
+            "available": available_invites,
+            "used": used_invites,
+            "active_users": used_invites,
+            "total": total_invites,
+        },
+        "invite_history": invite_history,
+        "primary_invite_link": primary_invite_link,
+        "profile": profile,
+        "vk_bot_link": get_vk_bot_link() or "#",
+        "telegram_support_link": "#",  # TODO: подключить реальную ссылку Telegram-поддержки, когда она появится в настройках проекта.
+    }
+
+
+@router.get("/new-ui", response_class=HTMLResponse)
+async def new_ui_dashboard(request: Request):
+    context = _get_new_ui_context(request, "dashboard")
+    if isinstance(context, RedirectResponse):
+        return context
+    return templates.TemplateResponse(request=request, name="new/dashboard.html", context=context)
+
+
+@router.get("/new-ui/invites", response_class=HTMLResponse)
+async def new_ui_invites(request: Request):
+    context = _get_new_ui_context(request, "invites")
+    if isinstance(context, RedirectResponse):
+        return context
+    return templates.TemplateResponse(request=request, name="new/invites.html", context=context)
+
+
+@router.get("/new-ui/profile", response_class=HTMLResponse)
+async def new_ui_profile(request: Request):
+    context = _get_new_ui_context(request, "profile")
+    if isinstance(context, RedirectResponse):
+        return context
+    return templates.TemplateResponse(request=request, name="new/profile.html", context=context)
+
 @router.post("/dashboard/referral-invite")
 async def dashboard_create_referral_invite(request: Request):
     user = get_current_user(request)

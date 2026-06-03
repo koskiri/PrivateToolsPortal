@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}OnlyUs{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/new/app.css" />
+    <link rel="icon" type="image/png" href="/static/img/favicon.png" />
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar" id="sidebar">
+            <a class="brand" href="/new-ui" aria-label="OnlyUs — главная">
+                <span class="brand-mark">O</span>
+                <span class="brand-text">OnlyUs</span>
+            </a>
+            <nav class="nav" aria-label="Основное меню">
+                <a class="nav-link {% if active_page == 'dashboard' %}active{% endif %}" href="/new-ui">
+                    <span class="nav-icon">⌂</span><span>Главная</span>
+                </a>
+                <a class="nav-link {% if active_page == 'invites' %}active{% endif %}" href="/new-ui/invites">
+                    <span class="nav-icon">✦</span><span>Приглашения</span>
+                </a>
+                <a class="nav-link {% if active_page == 'profile' %}active{% endif %}" href="/new-ui/profile">
+                    <span class="nav-icon">◌</span><span>Профиль</span>
+                </a>
+            </nav>
+            <div class="sidebar-card">
+                <span class="eyebrow">Статус</span>
+                <strong>{{ role_label }}</strong>
+                <small>{{ 'Доступны приглашения' if is_sponsor else 'Можно перейти на спонсорство' }}</small>
+            </div>
+        </aside>
+
+        <div class="mobile-topbar">
+            <a class="brand compact" href="/new-ui"><span class="brand-mark">O</span><span>OnlyUs</span></a>
+            <button class="icon-button" type="button" data-menu-toggle aria-controls="sidebar" aria-expanded="false">☰</button>
+        </div>
+
+        <main class="main-content">
+            <header class="page-header">
+                <div>
+                    <p class="eyebrow">Личный кабинет</p>
+                    <h1>{% block heading %}OnlyUs{% endblock %}</h1>
+                    <p class="page-subtitle">Простой доступ к подписке, приглашениям и настройкам аккаунта.</p>
+                </div>
+                <div class="header-actions">
+                    <label class="theme-select">
+                        <span>Тема</span>
+                        <select data-theme-select>
+                            <option value="dark">Темная</option>
+                            <option value="light">Светлая</option>
+                            <option value="system">Системная</option>
+                        </select>
+                    </label>
+                    <a class="button ghost" href="/dashboard">Старый кабинет</a>
+                </div>
+            </header>
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    <div class="menu-backdrop" data-menu-backdrop></div>
+    <script src="/static/new/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{% extends "new/base.html" %}
+{% block title %}Приглашения — OnlyUs{% endblock %}
+{% block heading %}Приглашения{% endblock %}
+{% block content %}
+{% if not is_sponsor %}
+    <section class="card empty-state">
+        <p class="eyebrow">Только для спонсоров</p>
+        <h2>Приглашения пока недоступны</h2>
+        <p>Эта страница подготовлена для спонсорских аккаунтов. Когда статус будет подключен, здесь появятся ссылка, QR-код и история регистраций.</p>
+        <a class="button ghost" href="/new-ui">Вернуться на главную</a>
+    </section>
+{% else %}
+    <section class="stats-grid">
+        <article class="stat-card"><span>Доступно инвайтов</span><strong>{{ invite_stats.available }}</strong></article>
+        <article class="stat-card"><span>Использовано</span><strong>{{ invite_stats.used }}</strong></article>
+        <article class="stat-card"><span>Активных пользователей</span><strong>{{ invite_stats.active_users }}</strong></article>
+    </section>
+
+    <section class="card section-card">
+        <div class="section-title"><div><p class="eyebrow">Ссылка приглашения</p><h2>Поделитесь доступом</h2></div></div>
+        <div class="invite-link-box">
+            <input id="invite-link" type="text" value="{{ primary_invite_link or 'Ссылка появится после создания приглашения' }}" readonly />
+            <button class="button primary" type="button" data-copy-target="invite-link" {% if not primary_invite_link %}disabled{% endif %}>Копировать</button>
+            <button class="button ghost" type="button" disabled>QR-код · скоро</button>
+        </div>
+    </section>
+
+    <section class="card section-card">
+        <div class="section-title"><div><p class="eyebrow">История приглашений</p><h2>Регистрации</h2></div></div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Пользователь</th><th>Дата регистрации</th><th>Статус</th></tr></thead>
+                <tbody>
+                {% for item in invite_history %}
+                    <tr><td>{{ item.user }}</td><td>{{ item.registered_at }}</td><td><span class="pill {{ 'success' if item.status == 'Активен' else 'muted' }}">{{ item.status }}</span></td></tr>
+                {% else %}
+                    <tr><td colspan="3">Приглашений пока нет.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endif %}
+{% endblock %}

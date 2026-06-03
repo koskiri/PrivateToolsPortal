@@ -1,0 +1,57 @@
+{% extends "new/base.html" %}
+{% block title %}Профиль — OnlyUs{% endblock %}
+{% block heading %}Профиль{% endblock %}
+{% block content %}
+<section class="grid two-columns">
+    <article class="card section-card">
+        <p class="eyebrow">Личные данные</p>
+        <h2>Контакты</h2>
+        <div class="info-list">
+            <div><span>Email</span><strong>{{ profile.email }}</strong></div>
+            <div><span>Telegram</span><strong>{{ profile.telegram }}</strong></div>
+            <div><span>VK</span><strong>{{ profile.vk }}</strong></div>
+        </div>
+    </article>
+
+    <article class="card section-card">
+        <p class="eyebrow">Безопасность</p>
+        <h2>Доступ к аккаунту</h2>
+        <div class="action-list">
+            <button class="action-button" type="button" disabled><span>Сменить пароль</span><small>Скоро</small></button>
+            <button class="action-button" type="button" disabled><span>Активные сессии</span><small>Скоро</small></button>
+        </div>
+    </article>
+</section>
+
+<section class="grid two-columns">
+    <article class="card section-card">
+        <p class="eyebrow">Уведомления</p>
+        <h2>Каналы и события</h2>
+        <div class="toggle-list">
+            {% for label in ['Email', 'Telegram', 'VK', 'Истекает подписка', 'Новости сервиса', 'Системные уведомления'] %}
+                <label class="toggle-row"><span>{{ label }}</span><input type="checkbox" checked disabled /></label>
+            {% endfor %}
+        </div>
+    </article>
+
+    <article class="card section-card">
+        <p class="eyebrow">Тема оформления</p>
+        <h2>Внешний вид</h2>
+        <div class="theme-options" aria-label="Выбор темы">
+            <button class="button ghost" type="button" data-theme-choice="light">Светлая</button>
+            <button class="button ghost" type="button" data-theme-choice="dark">Темная</button>
+            <button class="button ghost" type="button" data-theme-choice="system">Системная</button>
+        </div>
+        <p class="muted-text">Выбор сохраняется в этом браузере.</p>
+    </article>
+</section>
+
+<section class="card support-card">
+    <p class="eyebrow">Поддержка</p>
+    <h2>Нужна помощь?</h2>
+    <div class="button-row">
+        <a class="button secondary" href="{{ telegram_support_link }}" aria-disabled="true">Telegram · скоро</a>
+        <a class="button secondary" href="{{ vk_bot_link }}">VK</a>
+    </div>
+</section>
+{% endblock %}
