@@ -48,7 +48,7 @@ a { color: inherit; }
 
 .app-shell {
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-columns: 260px minmax(0, 1fr);
     min-height: 100vh;
 }
 
@@ -120,7 +120,9 @@ a { color: inherit; }
 .sidebar-card small { margin-top: 6px; color: var(--muted); }
 
 .mobile-topbar { display: none; }
-.main-content { width: min(1180px, 100%); padding: 34px; }
+.main-content { width: 100%; min-width: 0; }
+.content-container { width: 100%; max-width: 1400px; margin: 0 auto; padding: 34px; }
+
 
 .page-header {
     display: flex;
@@ -247,7 +249,7 @@ th { color: var(--muted); font-size: 13px; }
     .brand-text, .nav-link span:last-child, .sidebar-card { display: block; }
     .nav-link { justify-content: flex-start; }
     .menu-backdrop.open { display: block; position: fixed; z-index: 40; inset: 0; background: rgba(0, 0, 0, 0.46); }
-    .main-content { padding: 22px 16px 34px; }
+    .content-container { width: 100%; max-width: none; padding: 16px; }
     .page-header { display: grid; }
     .header-actions { width: 100%; }
     .platform-scroll { display: flex; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x mandatory; }

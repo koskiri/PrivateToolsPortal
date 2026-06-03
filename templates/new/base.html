@@ -41,26 +41,28 @@
         </div>
 
         <main class="main-content">
-            <header class="page-header">
-                <div>
-                    <p class="eyebrow">Личный кабинет</p>
-                    <h1>{% block heading %}OnlyUs{% endblock %}</h1>
-                    <p class="page-subtitle">Простой доступ к подписке, приглашениям и настройкам аккаунта.</p>
-                </div>
-                <div class="header-actions">
-                    <label class="theme-select">
-                        <span>Тема</span>
-                        <select data-theme-select>
-                            <option value="dark">Темная</option>
-                            <option value="light">Светлая</option>
-                            <option value="system">Системная</option>
-                        </select>
-                    </label>
-                    <a class="button ghost" href="/dashboard">Старый кабинет</a>
-                </div>
-            </header>
+            <div class="content-container">
+                <header class="page-header">
+                    <div>
+                        <p class="eyebrow">Личный кабинет</p>
+                        <h1>{% block heading %}OnlyUs{% endblock %}</h1>
+                        <p class="page-subtitle">Простой доступ к подписке, приглашениям и настройкам аккаунта.</p>
+                    </div>
+                    <div class="header-actions">
+                        <label class="theme-select">
+                            <span>Тема</span>
+                            <select data-theme-select>
+                                <option value="dark">Темная</option>
+                                <option value="light">Светлая</option>
+                                <option value="system">Системная</option>
+                            </select>
+                        </label>
+                        <a class="button ghost" href="/dashboard">Старый кабинет</a>
+                    </div>
+                </header>
 
             {% block content %}{% endblock %}
+            </div>
         </main>
     </div>
     <div class="menu-backdrop" data-menu-backdrop></div>
