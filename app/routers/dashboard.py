@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus
@@ -153,6 +154,46 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
         },
     )
 
+def _device_from_key_title(title: str | None) -> str:
+    value = (title or "").strip().lower()
+    if value.startswith("android") or "android" in value:
+        return "Android"
+    if value.startswith("iphone") or "ios" in value or "айфон" in value:
+        return "iPhone"
+    if value.startswith("windows") or "win" in value:
+        return "Windows"
+    if value.startswith("macos") or value.startswith("mac os") or "mac" in value:
+        return "macOS"
+    return "Android"
+
+
+def _safe_new_ui_redirect(return_to: str | None, fallback: str = "/dashboard") -> str:
+    if return_to and return_to.startswith("/new-ui"):
+        return return_to
+    return fallback
+
+
+def _build_inline_qr_svg(payload: str) -> str:
+    # Lightweight backend-provided QR placeholder for the modal while keeping the technical payload hidden.
+    # The encoded connection string stays in the SVG metadata/title and is never rendered as visible text.
+    escaped_payload = html.escape(payload or "")
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" '
+        'aria-label="QR-код подключения">'
+        f'<title>OnlyUs connection QR</title><metadata>{escaped_payload}</metadata>'
+        '<rect width="240" height="240" rx="18" fill="#fff"/>'
+        '<g fill="#0f172a">'
+        '<rect x="20" y="20" width="54" height="54" rx="6"/><rect x="32" y="32" width="30" height="30" rx="3" fill="#fff"/>'
+        '<rect x="166" y="20" width="54" height="54" rx="6"/><rect x="178" y="32" width="30" height="30" rx="3" fill="#fff"/>'
+        '<rect x="20" y="166" width="54" height="54" rx="6"/><rect x="32" y="178" width="30" height="30" rx="3" fill="#fff"/>'
+        '<rect x="94" y="30" width="14" height="14"/><rect x="122" y="30" width="14" height="14"/><rect x="94" y="58" width="14" height="14"/>'
+        '<rect x="94" y="94" width="14" height="14"/><rect x="122" y="94" width="14" height="14"/><rect x="150" y="94" width="14" height="14"/><rect x="178" y="94" width="14" height="14"/>'
+        '<rect x="86" y="122" width="14" height="14"/><rect x="114" y="122" width="14" height="14"/><rect x="142" y="122" width="14" height="14"/><rect x="198" y="122" width="14" height="14"/>'
+        '<rect x="94" y="150" width="14" height="14"/><rect x="122" y="150" width="14" height="14"/><rect x="170" y="150" width="14" height="14"/><rect x="198" y="150" width="14" height="14"/>'
+        '<rect x="94" y="178" width="14" height="14"/><rect x="122" y="198" width="14" height="14"/><rect x="150" y="178" width="14" height="14"/><rect x="178" y="198" width="14" height="14"/><rect x="206" y="178" width="14" height="14"/>'
+        '</g></svg>'
+    )
+
 def _format_new_ui_date(value: str | None) -> str:
     if not value:
         return "—"
@@ -191,6 +232,14 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
             (user["id"],),
         ).fetchall()
         vk_link = get_vk_link_by_portal_user(con, int(user["id"]))
+        key_rows = con.execute(
+            (
+                "SELECT id, kind, title, payload, created_at "
+                "FROM vpn_keys WHERE telegram_id = ? AND revoked_at IS NULL "
+                "ORDER BY datetime(created_at) DESC"
+            ),
+            (user["telegram_id"],),
+        ).fetchall()
 
     now = utcnow()
     active_until = None
@@ -219,6 +268,22 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         for row in invite_rows
     ]
     primary_invite_link = invite_history[0]["invite_link"] if invite_history else ""
+
+    connection_profiles = [
+        {
+            "id": row["id"],
+            "title": row["title"] or f"Подключение #{row['id']}",
+            "device": _device_from_key_title(row["title"]),
+            "status": "Готово",
+            "link": row["payload"] or "",
+            "qr_svg": _build_inline_qr_svg(row["payload"] or ""),
+            "qr_url": f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data={quote_plus(row['payload'] or '')}",
+            "download_url": f"/dashboard/keys/{row['id']}/download",
+            "delete_url": f"/dashboard/keys/{row['id']}/delete",
+            "created_at": _format_new_ui_date(row["created_at"]),
+        }
+        for row in key_rows
+    ]
 
     login = user["login"] or ""
     # В portal_users нет отдельных полей email/telegram username; показываем безопасные значения без технических ID.
@@ -251,6 +316,9 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         "profile": profile,
         "vk_bot_link": get_vk_bot_link() or "#",
         "telegram_support_link": "#",  # TODO: подключить реальную ссылку Telegram-поддержки, когда она появится в настройках проекта.
+        "connection_profiles": connection_profiles,
+        "connections_limit": int(stats["key_limit"] or 0) if stats else 0,
+        "connections_active": int(stats["active_keys"] or 0) if stats else 0,
     }
 
 
@@ -735,14 +803,19 @@ async def dashboard_payment_return(request: Request, payment_id: str = ""):
 
 
 @router.post("/dashboard/create-key")
-async def dashboard_create_key(request: Request, key_kind: str = Form(...), key_title: str = Form("")):
+async def dashboard_create_key(
+    request: Request,
+    key_kind: str = Form(...),
+    key_title: str = Form(""),
+    return_to: str = Form(""),
+):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
 
     key_kind = key_kind.strip().lower()
     if key_kind not in {"awg", "xray"}:
-        return RedirectResponse("/dashboard?error=Неизвестный+тип+ключа", status_code=303)
+        return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Неизвестный+тип+ключа", status_code=303)
 
     now = utcnow()
     with get_db_connection() as con:
@@ -758,15 +831,15 @@ async def dashboard_create_key(request: Request, key_kind: str = Form(...), key_
             (user["telegram_id"],),
         ).fetchone()
         if not stats:
-            return RedirectResponse("/dashboard?error=Сначала+подключите+подписку", status_code=303)
+            return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Сначала+подключите+подписку", status_code=303)
 
         active_until = datetime.fromisoformat(stats["active_until"])
         if active_until <= now:
             deactivate_user_keys(con, user["telegram_id"])
             con.commit()
-            return RedirectResponse("/dashboard?error=Подписка+истекла,+продлите+ее", status_code=303)
+            return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Подписка+истекла,+продлите+ее", status_code=303)
         if stats["active_keys"] >= (stats["key_limit"] or 0):
-            return RedirectResponse("/dashboard?error=Достигнут+лимит+ключей+для+тарифа", status_code=303)
+            return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Достигнут+лимит+ключей+для+тарифа", status_code=303)
 
         title = key_title.strip() or f"{'Amnezia WG' if key_kind == 'awg' else 'XRay'} ключ"
         created_at = now.isoformat()
@@ -777,7 +850,7 @@ async def dashboard_create_key(request: Request, key_kind: str = Form(...), key_
                 telegram_id=user["telegram_id"],
             )
         except RuntimeError as exc:
-            return RedirectResponse(f"/dashboard?error={str(exc).replace(' ', '+')}", status_code=303)
+            return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error={quote_plus(str(exc))}", status_code=303)
         con.execute(
             (
                 "INSERT INTO vpn_keys "
@@ -788,7 +861,7 @@ async def dashboard_create_key(request: Request, key_kind: str = Form(...), key_
         )
         con.commit()
 
-    return RedirectResponse("/dashboard?success=Ключ+успешно+создан", status_code=303)
+    return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?success=Подключение+создано", status_code=303)
 
 @router.post("/dashboard/keys/{key_id}/rename")
 async def dashboard_rename_key(request: Request, key_id: int, key_title: str = Form(...)):
@@ -812,7 +885,7 @@ async def dashboard_rename_key(request: Request, key_id: int, key_title: str = F
 
 
 @router.post("/dashboard/keys/{key_id}/delete")
-async def dashboard_delete_key(request: Request, key_id: int):
+async def dashboard_delete_key(request: Request, key_id: int, return_to: str = Form("")):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
@@ -827,7 +900,7 @@ async def dashboard_delete_key(request: Request, key_id: int):
             (key_id, user["telegram_id"]),
         ).fetchone()
     if not key:
-        return RedirectResponse("/dashboard?error=Ключ+не+найден+или+уже+удален", status_code=303)
+        return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Подключение+не+найдено+или+уже+удалено", status_code=303)
 
     try:
         revoke_vpn_key_on_vps(
@@ -837,7 +910,7 @@ async def dashboard_delete_key(request: Request, key_id: int):
             peer_ip=key["peer_ip"],
         )
     except Exception as exc:
-        return RedirectResponse(f"/dashboard?error={quote_plus(str(exc))}", status_code=303)
+        return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error={quote_plus(str(exc))}", status_code=303)
 
     with get_db_connection() as con:
         updated = con.execute(
@@ -846,8 +919,8 @@ async def dashboard_delete_key(request: Request, key_id: int):
         ).rowcount
         con.commit()
     if not updated:
-        return RedirectResponse("/dashboard?error=Ключ+не+найден+или+уже+удален", status_code=303)
-    return RedirectResponse("/dashboard?success=Ключ+удален", status_code=303)
+        return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Подключение+не+найдено+или+уже+удалено", status_code=303)
+    return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?success=Подключение+удалено", status_code=303)
 
 
 @router.get("/dashboard/keys/{key_id}/download")

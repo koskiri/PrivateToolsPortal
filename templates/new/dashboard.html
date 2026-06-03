@@ -42,7 +42,7 @@
             <h2>Выберите устройство</h2>
             <p class="section-subtitle">Выберите вашу платформу и следуйте инструкции по настройке</p>
         </div>
-        <span class="instruction-badge">Инструкции встроены в карточки</span>
+        <span class="instruction-badge">Инструкция</span>
     </div>
     <div class="platform-scroll" aria-label="Выбор платформы для настройки VPN">
         <article class="platform-card">
@@ -155,6 +155,87 @@
                 <li>Введите данные профиля OnlyUs.</li>
                 <li>Сохраните профиль и включите VPN.</li>
             </ol>
+        </div>
+    </div>
+</section>
+
+<section class="card section-card my-connections" id="connections" aria-labelledby="connections-title">
+    <div class="section-title connection-title">
+        <div class="section-heading">
+            <p class="eyebrow">Мои подключения</p>
+            <h2 id="connections-title">Профили подключения</h2>
+            <p class="section-subtitle">Создавайте отдельные профили для своих устройств. Технический ключ скрыт — используйте ссылку, QR-код или скачайте конфиг.</p>
+        </div>
+        <span class="instruction-badge">{{ connections_active }} / {{ connections_limit }} профилей</span>
+    </div>
+
+    <details class="connection-create" data-connection-create>
+        <summary class="button primary connection-add-button">+ Добавить подключение</summary>
+        <form class="connection-form" method="post" action="/dashboard/create-key" data-connection-form>
+            <input type="hidden" name="key_kind" value="awg" />
+            <input type="hidden" name="return_to" value="/new-ui#connections" />
+            <input type="hidden" name="key_title" data-connection-title />
+            <label>
+                <span>Устройство</span>
+                <select name="connection_device" data-connection-device required>
+                    <option value="Android">Android</option>
+                    <option value="iPhone">iPhone</option>
+                    <option value="Windows">Windows</option>
+                    <option value="macOS">macOS</option>
+                </select>
+            </label>
+            <label>
+                <span>Название подключения</span>
+                <input type="text" name="connection_label" data-connection-label placeholder="Например, телефон" maxlength="80" required />
+            </label>
+            <button class="button primary" type="submit">Создать</button>
+        </form>
+    </details>
+
+    {% if connection_profiles %}
+        <div class="connections-grid" aria-label="Список подключений">
+            {% for profile in connection_profiles %}
+                <article class="connection-profile" data-connection-card data-connection-link="{{ profile.link|e }}" data-connection-name="{{ profile.title|e }}" data-connection-device="{{ profile.device|e }}" data-connection-qr-url="{{ profile.qr_url|e }}">
+                    <div class="connection-profile__top">
+                        <span class="connection-device-icon" aria-hidden="true">{{ profile.device[0] }}</span>
+                        <span class="pill success">{{ profile.status }}</span>
+                    </div>
+                    <div class="connection-profile__copy">
+                        <h3>{{ profile.title }}</h3>
+                        <p>{{ profile.device }}</p>
+                    </div>
+                    <div class="connection-profile__actions" aria-label="Действия с подключением {{ profile.title }}">
+                        <button class="button secondary" type="button" data-connection-copy>Скопировать ссылку</button>
+                        <button class="button secondary" type="button" data-connection-qr-open>Показать QR-код</button>
+                        <a class="button ghost" href="{{ profile.download_url }}" download>Скачать конфиг</a>
+                        <form method="post" action="{{ profile.delete_url }}" data-connection-delete-form>
+                            <input type="hidden" name="return_to" value="/new-ui#connections" />
+                            <button class="button danger" type="submit">Удалить</button>
+                        </form>
+                    </div>
+                    <template data-connection-qr>{{ profile.qr_svg|safe }}</template>
+                </article>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="connections-empty">
+            <strong>Пока нет подключений</strong>
+            <p>Добавьте первый профиль для телефона, ноутбука или компьютера — карточка появится здесь после генерации на backend.</p>
+        </div>
+    {% endif %}
+
+    <div class="connection-modal" id="connection-qr-modal" role="dialog" aria-modal="true" aria-labelledby="connection-qr-title" aria-hidden="true">
+        <div class="connection-modal__backdrop" data-connection-modal-close></div>
+        <div class="connection-modal__panel" tabindex="-1">
+            <div class="instruction-modal__head">
+                <div>
+                    <p class="eyebrow" data-connection-modal-device>Подключение</p>
+                    <h3 id="connection-qr-title" data-connection-modal-title>QR-код</h3>
+                </div>
+                <button class="icon-button instruction-modal__close" type="button" data-connection-modal-close aria-label="Закрыть QR-код">×</button>
+            </div>
+            <div class="connection-qr-frame" data-connection-modal-qr></div>
+            <p class="connection-modal__hint">Отсканируйте код в приложении VPN. Техническая строка ключа не отображается на странице.</p>
         </div>
     </div>
 </section>

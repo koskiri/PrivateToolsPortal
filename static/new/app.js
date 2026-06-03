@@ -49,6 +49,48 @@
         menuToggle?.setAttribute("aria-expanded", String(open));
     }
 
+    const connectionQrModal = document.getElementById("connection-qr-modal");
+    let activeConnectionTrigger = null;
+
+    function closeConnectionModal() {
+        if (!connectionQrModal?.classList.contains("open")) return;
+        connectionQrModal.classList.remove("open");
+        connectionQrModal.setAttribute("aria-hidden", "true");
+        connectionQrModal.querySelector("[data-connection-modal-qr]").innerHTML = "";
+        if (!connectionQrModal?.classList.contains("open")) {
+            document.body.classList.remove("modal-open");
+        }
+        activeConnectionTrigger?.focus();
+        activeConnectionTrigger = null;
+    }
+
+    function openConnectionModal(card, trigger) {
+        if (!connectionQrModal || !card) return;
+        closeInstructionModal();
+        activeConnectionTrigger = trigger;
+        const title = card.dataset.connectionName || "Подключение";
+        const device = card.dataset.connectionDevice || "Подключение";
+        const qrTemplate = card.querySelector("[data-connection-qr]");
+        const qrTarget = connectionQrModal.querySelector("[data-connection-modal-qr]");
+        const qrUrl = card.dataset.connectionQrUrl || "";
+        connectionQrModal.querySelector("[data-connection-modal-title]").textContent = title;
+        connectionQrModal.querySelector("[data-connection-modal-device]").textContent = device;
+        qrTarget.innerHTML = "";
+        if (qrUrl) {
+            const image = document.createElement("img");
+            image.src = qrUrl;
+            image.alt = `QR-код подключения ${title}`;
+            image.loading = "lazy";
+            qrTarget.append(image);
+        } else {
+            qrTarget.innerHTML = qrTemplate?.innerHTML || "";
+        }
+        connectionQrModal.classList.add("open");
+        connectionQrModal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("modal-open");
+        connectionQrModal.querySelector(".connection-modal__panel")?.focus();
+    }
+
     const instructionButtons = document.querySelectorAll("[data-instruction-open]");
     const instructionModals = document.querySelectorAll(".instruction-modal");
     let activeInstructionTrigger = null;
@@ -71,6 +113,7 @@
         const modal = document.getElementById(`instruction-${platform}`);
         if (!modal) return;
         closeInstructionModal();
+        closeConnectionModal();
         activeInstructionTrigger = trigger;
         modal.classList.add("open");
         modal.setAttribute("aria-hidden", "false");
@@ -91,7 +134,63 @@
     });
 
     document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") closeInstructionModal();
+        if (event.key === "Escape") {
+            closeInstructionModal();
+            closeConnectionModal();
+        }
+    });
+
+
+    document.querySelectorAll("[data-connection-copy]").forEach((button) => {
+        button.addEventListener("click", async () => {
+            const card = button.closest("[data-connection-card]");
+            const value = card?.dataset.connectionLink || "";
+            if (!value) return;
+            await navigator.clipboard.writeText(value);
+            const original = button.textContent;
+            button.textContent = "Скопировано";
+            window.setTimeout(() => { button.textContent = original; }, 1600);
+        });
+    });
+
+    document.querySelectorAll("[data-connection-qr-open]").forEach((button) => {
+        button.addEventListener("click", () => {
+            openConnectionModal(button.closest("[data-connection-card]"), button);
+        });
+    });
+
+    connectionQrModal?.querySelectorAll("[data-connection-modal-close]").forEach((button) => {
+        button.addEventListener("click", closeConnectionModal);
+    });
+
+    document.querySelectorAll("[data-connection-form]").forEach((form) => {
+        form.addEventListener("submit", () => {
+            const device = form.querySelector("[data-connection-device]")?.value || "Android";
+            const label = form.querySelector("[data-connection-label]")?.value.trim() || "Устройство";
+            const title = form.querySelector("[data-connection-title]");
+            if (title) title.value = `${device} · ${label}`;
+        });
+    });
+
+    document.querySelectorAll("[data-connection-delete-form]").forEach((form) => {
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const card = form.closest("[data-connection-card]");
+            const button = form.querySelector("button[type='submit']");
+            button.disabled = true;
+            try {
+                const response = await fetch(form.action, {
+                    method: "POST",
+                    body: new FormData(form),
+                    credentials: "same-origin",
+                });
+                if (!response.ok || response.url.includes("error=")) throw new Error("delete failed");
+                card?.remove();
+            } catch (error) {
+                button.disabled = false;
+                form.submit();
+            }
+        });
     });
 
     document.querySelectorAll("[data-copy-target]").forEach((button) => {
