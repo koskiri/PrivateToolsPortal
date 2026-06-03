@@ -40,44 +40,122 @@
         <div class="section-heading">
             <p class="eyebrow">Подключение</p>
             <h2>Выберите устройство</h2>
-            <p class="section-subtitle">Выберите вашу платформу и следуйте инструкции по настройке.</p>
+            <p class="section-subtitle">Выберите вашу платформу и следуйте инструкции по настройке</p>
         </div>
-        <span class="instruction-badge">Инструкции скоро будут доступны</span>
+        <span class="instruction-badge">Инструкции встроены в карточки</span>
     </div>
-    <div class="platform-scroll">
+    <div class="platform-scroll" aria-label="Выбор платформы для настройки VPN">
         <article class="platform-card">
             <span class="platform-icon" aria-hidden="true">A</span>
             <div class="platform-copy">
                 <h3>Android</h3>
-                <p>Рекомендуем Amnezia VPN</p>
+                <p>Используйте Amnezia VPN, импортируйте конфиг и подключитесь</p>
             </div>
-            <button class="button secondary platform-button" type="button" disabled>Инструкция скоро</button>
+            <button class="button secondary platform-button" type="button" data-instruction-open="android">Открыть инструкцию</button>
         </article>
         <article class="platform-card">
             <span class="platform-icon" aria-hidden="true">i</span>
             <div class="platform-copy">
                 <h3>iPhone</h3>
-                <p>Встроенный VPN-клиент iOS</p>
+                <p>Используйте встроенный VPN iOS, настройте IKEv2</p>
             </div>
-            <button class="button secondary platform-button" type="button" disabled>Инструкция скоро</button>
+            <button class="button secondary platform-button" type="button" data-instruction-open="iphone">Открыть инструкцию</button>
         </article>
         <article class="platform-card">
             <span class="platform-icon" aria-hidden="true">W</span>
             <div class="platform-copy">
                 <h3>Windows</h3>
-                <p>Любой удобный клиент, рекомендуем Amnezia VPN</p>
+                <p>Скачайте Amnezia VPN, импортируйте конфиг и подключитесь</p>
             </div>
-            <button class="button secondary platform-button" type="button" disabled>Инструкция скоро</button>
+            <button class="button secondary platform-button" type="button" data-instruction-open="windows">Открыть инструкцию</button>
         </article>
         <article class="platform-card">
             <span class="platform-icon" aria-hidden="true">m</span>
             <div class="platform-copy">
                 <h3>macOS</h3>
-                <p>Встроенный VPN-клиент macOS</p>
+                <p>Используйте встроенный VPN macOS, настройте IKEv2</p>
                 <small>Пока не тестировалось</small>
             </div>
-            <button class="button secondary platform-button" type="button" disabled>Инструкция скоро</button>
+            <button class="button secondary platform-button" type="button" data-instruction-open="macos">Открыть инструкцию</button>
         </article>
+    </div>
+    <div class="instruction-modal" id="instruction-android" role="dialog" aria-modal="true" aria-labelledby="instruction-android-title" aria-hidden="true">
+        <div class="instruction-modal__backdrop" data-instruction-close></div>
+        <div class="instruction-modal__panel" tabindex="-1">
+            <div class="instruction-modal__head">
+                <div>
+                    <p class="eyebrow">Android</p>
+                    <h3 id="instruction-android-title">Настройка через Amnezia VPN</h3>
+                </div>
+                <button class="icon-button instruction-modal__close" type="button" data-instruction-close aria-label="Закрыть инструкцию">×</button>
+            </div>
+            <ol class="instruction-steps">
+                <li>Скачайте APK Amnezia VPN с официального источника или из ссылки, которую предоставит OnlyUs.</li>
+                <li>Установите приложение на Android-устройство.</li>
+                <li>Откройте Amnezia VPN и импортируйте конфигурацию OnlyUs.</li>
+                <li>Выберите добавленный профиль и нажмите «Подключиться».</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="instruction-modal" id="instruction-iphone" role="dialog" aria-modal="true" aria-labelledby="instruction-iphone-title" aria-hidden="true">
+        <div class="instruction-modal__backdrop" data-instruction-close></div>
+        <div class="instruction-modal__panel" tabindex="-1">
+            <div class="instruction-modal__head">
+                <div>
+                    <p class="eyebrow">iPhone</p>
+                    <h3 id="instruction-iphone-title">Настройка встроенного VPN iOS</h3>
+                </div>
+                <button class="icon-button instruction-modal__close" type="button" data-instruction-close aria-label="Закрыть инструкцию">×</button>
+            </div>
+            <ol class="instruction-steps">
+                <li>Откройте «Настройки» → «VPN».</li>
+                <li>Нажмите «Добавить конфигурацию VPN».</li>
+                <li>Выберите тип: IKEv2.</li>
+                <li>Вставьте данные профиля OnlyUs в поля конфигурации.</li>
+                <li>Сохраните профиль и включите VPN.</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="instruction-modal" id="instruction-windows" role="dialog" aria-modal="true" aria-labelledby="instruction-windows-title" aria-hidden="true">
+        <div class="instruction-modal__backdrop" data-instruction-close></div>
+        <div class="instruction-modal__panel" tabindex="-1">
+            <div class="instruction-modal__head">
+                <div>
+                    <p class="eyebrow">Windows</p>
+                    <h3 id="instruction-windows-title">Настройка через Amnezia VPN</h3>
+                </div>
+                <button class="icon-button instruction-modal__close" type="button" data-instruction-close aria-label="Закрыть инструкцию">×</button>
+            </div>
+            <ol class="instruction-steps">
+                <li>Скачайте клиент Amnezia VPN для Windows.</li>
+                <li>Установите приложение на компьютер.</li>
+                <li>Откройте клиент и импортируйте конфигурацию OnlyUs.</li>
+                <li>Нажмите «Подключить» для запуска VPN.</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="instruction-modal" id="instruction-macos" role="dialog" aria-modal="true" aria-labelledby="instruction-macos-title" aria-hidden="true">
+        <div class="instruction-modal__backdrop" data-instruction-close></div>
+        <div class="instruction-modal__panel" tabindex="-1">
+            <div class="instruction-modal__head">
+                <div>
+                    <p class="eyebrow">macOS</p>
+                    <h3 id="instruction-macos-title">Настройка встроенного VPN macOS</h3>
+                </div>
+                <button class="icon-button instruction-modal__close" type="button" data-instruction-close aria-label="Закрыть инструкцию">×</button>
+            </div>
+            <p class="instruction-note">Пока не тестировалось.</p>
+            <ol class="instruction-steps">
+                <li>Откройте «Настройки» → «Сеть» → «VPN».</li>
+                <li>Нажмите «Добавить».</li>
+                <li>Выберите тип IKEv2.</li>
+                <li>Введите данные профиля OnlyUs.</li>
+                <li>Сохраните профиль и включите VPN.</li>
+            </ol>
+        </div>
     </div>
 </section>
 
