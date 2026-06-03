@@ -35,19 +35,49 @@
     </article>
 </section>
 
-<section class="card section-card">
-    <div class="section-title">
-        <div><p class="eyebrow">Подключение</p><h2>Выберите устройство</h2></div>
-        <p>Инструкции откроются здесь после подключения материалов.</p>
+<section class="card section-card connection-card">
+    <div class="section-title connection-title">
+        <div class="section-heading">
+            <p class="eyebrow">Подключение</p>
+            <h2>Выберите устройство</h2>
+            <p class="section-subtitle">Выберите вашу платформу и следуйте инструкции по настройке.</p>
+        </div>
+        <span class="instruction-badge">Инструкции скоро будут доступны</span>
     </div>
     <div class="platform-scroll">
-        {% for platform in ['Android', 'iPhone', 'Windows', 'MacOS'] %}
-            <article class="platform-card">
-                <span class="platform-icon">{{ platform[0] }}</span>
-                <h3>{{ platform }}</h3>
-                <button class="button ghost" type="button" disabled>Открыть инструкцию · скоро</button>
-            </article>
-        {% endfor %}
+        <article class="platform-card">
+            <span class="platform-icon" aria-hidden="true">A</span>
+            <div class="platform-copy">
+                <h3>Android</h3>
+                <p>Рекомендуем Amnezia VPN</p>
+            </div>
+            <button class="button secondary platform-button" type="button" disabled>Инструкция скоро</button>
+        </article>
+        <article class="platform-card">
+            <span class="platform-icon" aria-hidden="true">i</span>
+            <div class="platform-copy">
+                <h3>iPhone</h3>
+                <p>Встроенный VPN-клиент iOS</p>
+            </div>
+            <button class="button secondary platform-button" type="button" disabled>Инструкция скоро</button>
+        </article>
+        <article class="platform-card">
+            <span class="platform-icon" aria-hidden="true">W</span>
+            <div class="platform-copy">
+                <h3>Windows</h3>
+                <p>Любой удобный клиент, рекомендуем Amnezia VPN</p>
+            </div>
+            <button class="button secondary platform-button" type="button" disabled>Инструкция скоро</button>
+        </article>
+        <article class="platform-card">
+            <span class="platform-icon" aria-hidden="true">m</span>
+            <div class="platform-copy">
+                <h3>macOS</h3>
+                <p>Встроенный VPN-клиент macOS</p>
+                <small>Пока не тестировалось</small>
+            </div>
+            <button class="button secondary platform-button" type="button" disabled>Инструкция скоро</button>
+        </article>
     </div>
 </section>
 

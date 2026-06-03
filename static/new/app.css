@@ -43,6 +43,8 @@ body {
         var(--bg);
 }
 
+body.modal-open { overflow: hidden; }
+
 button, input, select { font: inherit; }
 a { color: inherit; }
 
@@ -204,10 +206,18 @@ h3 { font-size: 18px; }
 .pill.muted { color: var(--muted); background: var(--surface-muted); }
 
 .section-card { margin-bottom: 18px; }
-.platform-scroll { display: grid; grid-template-columns: repeat(4, minmax(170px, 1fr)); gap: 14px; }
-.platform-card { padding: 18px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface-muted); }
-.platform-icon { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 18px; border-radius: 15px; color: #fff; background: var(--brand); font-weight: 900; }
-.platform-card h3 { margin-bottom: 14px; }
+.connection-title { gap: 18px; margin-bottom: 24px; }
+.section-heading { max-width: 620px; }
+.section-subtitle { margin: 10px 0 0; color: var(--muted); line-height: 1.55; }
+.instruction-badge { display: inline-flex; align-items: center; min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); background: var(--surface-muted); font-size: 13px; font-weight: 800; white-space: nowrap; }
+.platform-scroll { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.platform-card { display: flex; min-width: 0; min-height: 230px; flex-direction: column; align-items: flex-start; padding: 18px; border: 1px solid var(--border); border-radius: 18px; background: linear-gradient(180deg, rgba(37, 99, 235, 0.10), transparent 72%), var(--surface-muted); }
+.platform-icon { display: grid; place-items: center; width: 46px; height: 46px; margin-bottom: 18px; border-radius: 16px; color: #fff; background: linear-gradient(135deg, var(--brand), #60a5fa); font-weight: 900; box-shadow: 0 14px 28px rgba(37, 99, 235, 0.24); }
+.platform-copy { flex: 1; min-width: 0; }
+.platform-card h3 { margin-bottom: 8px; }
+.platform-card p { margin: 0; color: var(--muted); line-height: 1.45; }
+.platform-card small { display: block; margin-top: 10px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.platform-button { width: 100%; margin-top: 20px; white-space: nowrap; }
 
 .action-list { display: grid; gap: 12px; margin-top: 18px; }
 .action-button { display: flex; justify-content: space-between; align-items: center; gap: 14px; min-height: 58px; width: 100%; padding: 0 16px; color: var(--text); background: var(--surface-muted); border: 1px solid var(--border); border-radius: 18px; text-align: left; }
@@ -239,6 +249,7 @@ th { color: var(--muted); font-size: 13px; }
     .brand-text, .nav-link span:last-child, .sidebar-card { display: none; }
     .nav-link { justify-content: center; }
     .two-columns { grid-template-columns: 1fr; }
+    .platform-scroll { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -252,8 +263,10 @@ th { color: var(--muted); font-size: 13px; }
     .content-container { width: 100%; max-width: none; padding: 16px; }
     .page-header { display: grid; }
     .header-actions { width: 100%; }
-    .platform-scroll { display: flex; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x mandatory; }
-    .platform-card { min-width: 220px; scroll-snap-align: start; }
+    .connection-title { display: grid; margin-bottom: 22px; }
+    .instruction-badge { justify-self: start; white-space: normal; }
+    .platform-scroll { display: flex; overflow-x: auto; gap: 16px; padding-bottom: 8px; scroll-snap-type: x mandatory; }
+    .platform-card { min-width: min(260px, 82vw); scroll-snap-align: start; }
     .stats-grid { grid-template-columns: 1fr; }
     .card { padding: 20px; }
 }
