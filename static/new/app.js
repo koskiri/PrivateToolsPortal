@@ -1,4 +1,5 @@
 (() => {
+    document.addEventListener("DOMContentLoaded", () => {
     const root = document.documentElement;
     const storageKey = "onlyus-theme";
     const themeSelect = document.querySelector("[data-theme-select]");
@@ -70,7 +71,10 @@
 
     function openProfileCreateModal(trigger) {
         const modal = getProfileCreateModal();
-        if (!modal) return;
+        if (!modal) {
+            console.warn("OnlyUs new UI: profile create modal was not found.");
+            return;
+        }
         closeInstructionModal();
         closeConnectionModal();
         activeProfileCreateTrigger = trigger;
@@ -79,6 +83,17 @@
         document.body.classList.add("modal-open");
         modal.querySelector(".connection-modal__panel")?.focus();
         modal.querySelector("[data-connection-label]")?.focus();
+    }
+
+    function bindProfileCreateButton() {
+        const button = document.getElementById("open-create-profile-modal");
+        if (!button) {
+            console.warn("OnlyUs new UI: #open-create-profile-modal button was not found.");
+            return;
+        }
+        if (button.dataset.profileCreateBound === "true") return;
+        button.dataset.profileCreateBound = "true";
+        button.addEventListener("click", () => openProfileCreateModal(button));
     }
 
     function getConnectionModal() {
@@ -225,15 +240,11 @@
         closeConnectionModal();
         closeProfileCreateModal();
         currentConnections.replaceWith(nextConnections);
+        bindProfileCreateButton();
         document.getElementById("connections")?.scrollIntoView({ block: "start" });
     }
 
     document.addEventListener("click", async (event) => {
-        const profileCreateButton = event.target.closest("[data-profile-create-open]");
-        if (profileCreateButton) {
-            openProfileCreateModal(profileCreateButton);
-            return;
-        }
 
         if (event.target.closest("[data-profile-create-close]")) {
             closeProfileCreateModal();
@@ -261,25 +272,9 @@
     });
 
     document.addEventListener("submit", async (event) => {
-        const createForm = event.target.closest("[data-connection-form]");
+        const createForm = event.target.closest("[data-profile-create-form]");
         if (createForm) {
             prepareConnectionTitle(createForm);
-            event.preventDefault();
-            const button = createForm.querySelector("button[type='submit']");
-            button.disabled = true;
-            try {
-                const response = await fetch(createForm.action, {
-                    method: "POST",
-                    body: new FormData(createForm),
-                    credentials: "same-origin",
-                });
-                if (!response.ok) throw new Error("create failed");
-                await replaceConnectionsFromResponse(response);
-            } catch (error) {
-                HTMLFormElement.prototype.submit.call(createForm);
-            } finally {
-                button.disabled = false;
-            }
             return;
         }
 
@@ -304,6 +299,8 @@
         }
     });
 
+    bindProfileCreateButton();
+
     document.querySelectorAll("[data-copy-target]").forEach((button) => {
         button.addEventListener("click", async () => {
             const target = document.getElementById(button.dataset.copyTarget || "");
@@ -311,5 +308,6 @@
             await copyText(target.value);
             flashButtonLabel(button);
         });
+    });
     });
 })();

@@ -159,8 +159,8 @@
     </div>
 </section>
 
-<section class="card section-card my-connections" id="connections" aria-labelledby="connections-title">
-    <div class="section-title connection-title">
+<section class="card section-card my-connections connections-section" id="connections" aria-labelledby="connections-title">
+    <div class="section-title connection-title connections-header">
         <div class="section-heading">
             <p class="eyebrow">Мои подключения</p>
             <h2 id="connections-title">Профили подключения</h2>
@@ -170,13 +170,13 @@
     </div>
 
     <div class="connection-toolbar">
-        <button class="button primary" type="button" data-profile-create-open>+ Создать профиль</button>
+        <button class="button primary create-profile-button" id="open-create-profile-modal" type="button">+ Создать профиль</button>
     </div>
 
-    <div class="connection-device-groups" aria-label="Профили подключения по устройствам">
+    <div class="connection-device-groups os-sections" aria-label="Профили подключения по устройствам">
         {% for card in connection_device_cards %}
-            <section class="connection-device-group" aria-labelledby="connections-{{ card.device|lower|replace(' ', '-') }}-title">
-                <div class="connection-device-group__head">
+            <section class="connection-device-group os-section" aria-labelledby="connections-{{ card.device|lower|replace(' ', '-') }}-title">
+                <div class="connection-device-group__head os-section-header">
                     <div>
                         <p class="eyebrow">{{ card.device }}</p>
                         <h3 id="connections-{{ card.device|lower|replace(' ', '-') }}-title">{{ card.device }}</h3>
@@ -184,9 +184,9 @@
                 </div>
 
                 {% if card.profiles %}
-                    <div class="connections-grid" aria-label="Профили {{ card.device }}">
+                    <div class="connections-grid profile-grid" aria-label="Профили {{ card.device }}">
                         {% for profile in card.profiles %}
-                            <article class="connection-profile ready" data-connection-card data-connection-link="{{ profile.link|e }}" data-connection-name="{{ profile.title|e }}" data-connection-device="{{ profile.device|e }}" data-connection-qr-url="{{ profile.qr_url|e }}">
+                            <article class="connection-profile profile-card ready" data-connection-card data-connection-link="{{ profile.link|e }}" data-connection-name="{{ profile.title|e }}" data-connection-device="{{ profile.device|e }}" data-connection-qr-url="{{ profile.qr_url|e }}">
                                 <div class="connection-profile__top">
                                     <span class="connection-device-icon" aria-hidden="true">{{ card.icon }}</span>
                                     <span class="pill success">{{ profile.status }}</span>
@@ -210,7 +210,7 @@
                         {% endfor %}
                     </div>
                 {% else %}
-                    <div class="connections-empty">
+                    <div class="connections-empty empty-state">
                         <strong>Профилей для {{ card.device }} пока нет</strong>
                         <p>Нажмите единую кнопку «Создать профиль» сверху блока, чтобы добавить отдельный профиль подключения. Технический ключ останется скрытым.</p>
                     </div>
