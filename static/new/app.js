@@ -1,4 +1,51 @@
 (() => {
+    function closeProfileCreateModalFallback() {
+        const modal = document.getElementById("profile-create-modal");
+        if (!modal) {
+            console.warn("profile-create-modal not found");
+            return;
+        }
+
+        modal.classList.remove("open");
+        modal.setAttribute("aria-hidden", "true");
+        modal.style.display = "none";
+        modal.setAttribute("hidden", "");
+        document.body.classList.remove("modal-open");
+    }
+
+    document.addEventListener("click", function(event) {
+        const button = event.target.closest("#open-create-profile-modal");
+        if (!button) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const modal = document.getElementById("profile-create-modal");
+        if (!modal) {
+            console.warn("profile-create-modal not found");
+            return;
+        }
+
+        modal.classList.add("open");
+        modal.removeAttribute("hidden");
+        modal.setAttribute("aria-hidden", "false");
+        modal.style.display = "flex";
+        document.body.classList.add("modal-open");
+    });
+
+    document.addEventListener("click", function(event) {
+        const modal = document.getElementById("profile-create-modal");
+        if (!modal) return;
+
+        const closeButton = event.target.closest("[data-profile-create-close]");
+        const isBackdrop = event.target === modal.querySelector(".connection-modal__backdrop");
+        if (!closeButton && !isBackdrop) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        closeProfileCreateModalFallback();
+    });
     document.addEventListener("DOMContentLoaded", () => {
         const root = document.documentElement;
         const storageKey = "onlyus-theme";
@@ -61,6 +108,8 @@
             if (!modal?.classList.contains("open")) return;
             modal.classList.remove("open");
             modal.setAttribute("aria-hidden", "true");
+            modal.style.display = "none";
+            modal.setAttribute("hidden", "");
             modal.querySelector("[data-profile-create-form]")?.reset();
             if (!hasOpenModal()) document.body.classList.remove("modal-open");
             activeProfileCreateTrigger?.focus();
@@ -99,7 +148,9 @@
             closeConnectionModal();
             activeProfileCreateTrigger = trigger;
             modal.classList.add("open");
+            modal.removeAttribute("hidden");
             modal.setAttribute("aria-hidden", "false");
+            modal.style.display = "flex";
             document.body.classList.add("modal-open");
             const labelInput = modal.querySelector("[data-connection-label]");
             modal.querySelector(".connection-modal__panel")?.focus();
@@ -218,7 +269,10 @@
             }
             if (button.dataset.profileCreateBound === "true") return;
             button.dataset.profileCreateBound = "true";
-            button.addEventListener("click", () => openProfileCreateModal(button));
+            button.addEventListener("click", (event) => {
+                event.preventDefault();
+                openProfileCreateModal(button);
+            });
         }
 
         applyTheme(localStorage.getItem(storageKey) || "dark");

@@ -260,6 +260,12 @@ h3 { font-size: 18px; }
 .connection-qr-frame { display: grid; place-items: center; padding: 18px; border: 1px solid var(--border); border-radius: 20px; background: #fff; }
 .connection-qr-frame svg, .connection-qr-frame img { width: min(260px, 100%); height: auto; display: block; }
 .connection-modal__hint { margin: 16px 0 0; color: var(--muted); line-height: 1.55; }
+#profile-create-modal {
+    display: none;
+}
+#profile-create-modal.open {
+    display: flex;
+}
 .profile-create-modal .connection-modal__panel { width: min(560px, 100%); }
 .modal-form { grid-template-columns: 1fr; margin-top: 0; }
 .modal-form .button { width: 100%; }
@@ -407,4 +413,35 @@ th { color: var(--muted); font-size: 13px; }
     .my-connections, .connections-section {
         padding: 28px;
     }
+}
+/* Hard overrides for profile modal and OS profile sections. */
+.os-sections {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 32px !important;
+}
+
+.os-section {
+    padding-top: 24px !important;
+    border-top: 1px solid var(--border) !important;
+}
+
+.os-section:first-child {
+    padding-top: 0 !important;
+    border-top: 0 !important;
+}
+
+.os-section-header {
+    margin-bottom: 18px !important;
+}
+
+.profile-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 20px !important;
+}
+
+.empty-state {
+    margin-top: 14px !important;
+    padding: 18px !important;
 }
