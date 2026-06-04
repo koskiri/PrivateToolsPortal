@@ -366,3 +366,47 @@ th { color: var(--muted); font-size: 13px; }
         linear-gradient(180deg, rgba(16, 185, 129, 0.16), transparent 72%),
         var(--surface-muted);
 }
+.connection-device-groups {
+    display: grid;
+    gap: 24px;
+}
+.connection-device-group {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+    padding-top: 4px;
+}
+.connection-device-group + .connection-device-group {
+    padding-top: 22px;
+    border-top: 1px solid var(--border);
+}
+.connection-device-group__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+.connection-card-form.inline {
+    width: auto;
+    flex: 0 0 auto;
+    margin-top: 0;
+}
+.connection-card-form.inline .button {
+    white-space: nowrap;
+}
+.connection-profile__actions form {
+    margin: 0;
+}
+.connection-profile__actions form .button {
+    width: 100%;
+}
+
+@media (max-width: 760px) {
+    .connection-device-group__head {
+        display: grid;
+    }
+    .connection-card-form.inline,
+    .connection-card-form.inline .button {
+        width: 100%;
+    }
+}

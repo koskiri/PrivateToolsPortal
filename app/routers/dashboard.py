@@ -269,35 +269,42 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
     ]
     primary_invite_link = invite_history[0]["invite_link"] if invite_history else ""
 
-    vless_profiles_by_device: dict[str, dict] = {}
+    connection_devices = (
+        {"device": "Android", "icon": "A"},
+        {"device": "iPhone", "icon": "i"},
+        {"device": "Windows", "icon": "W"},
+        {"device": "macOS", "icon": "M"},
+    )
+    vless_profiles_by_device: dict[str, list[dict]] = {device["device"]: [] for device in connection_devices}
     for row in key_rows:
         if row["kind"] != "xray":
             continue
         device = _device_from_key_title(row["title"])
-        if device in vless_profiles_by_device:
-            continue
-        vless_profiles_by_device[device] = {
+        profile = {
             "id": row["id"],
             "title": row["title"] or f"VLESS профиль #{row['id']}",
             "device": device,
-            "status": "Профиль готов",
+            "status": "Готово",
             "link": row["payload"] or "",
             "qr_url": f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data={quote_plus(row['payload'] or '')}",
             "download_url": f"/dashboard/keys/{row['id']}/download",
+            "delete_url": f"/dashboard/keys/{row['id']}/delete",
             "created_at": _format_new_ui_date(row["created_at"]),
         }
+        vless_profiles_by_device.setdefault(device, []).append(profile)
     connection_device_cards = []
-    for device in ("Android", "iPhone", "Windows", "macOS"):
-        profile = vless_profiles_by_device.get(device)
+    for device_meta in connection_devices:
+        device = device_meta["device"]
+        profiles = vless_profiles_by_device.get(device, [])
         connection_device_cards.append({
             "device": device,
-            "icon": "A" if device == "Android" else "i" if device == "iPhone" else "W" if device == "Windows" else "M",
+            "icon": device_meta["icon"],
             "hint": "VLESS профиль для приложения VPN",
-            "profile": profile,
-            "ready": profile is not None,
+            "profiles": profiles,
+            "ready": bool(profiles),
         })
 
-    connection_profiles = [card["profile"] for card in connection_device_cards if card["profile"]]
+    connection_profiles = [profile for card in connection_device_cards for profile in card["profiles"]]
 
     login = user["login"] or ""
     # В portal_users нет отдельных полей email/telegram username; показываем безопасные значения без технических ID.
@@ -829,6 +836,8 @@ async def dashboard_create_key(
         return RedirectResponse("/login", status_code=303)
 
     key_kind = key_kind.strip().lower()
+    if key_kind == "vless":
+        key_kind = "xray"
     if key_kind not in {"awg", "xray"}:
         return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Неизвестный+тип+ключа", status_code=303)
 

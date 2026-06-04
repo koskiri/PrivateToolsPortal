@@ -169,41 +169,58 @@
         <span class="instruction-badge">{{ connections_active }} / {{ connections_limit }} профилей</span>
     </div>
 
-    <div class="connections-grid" aria-label="Карточки устройств VLESS">
+    <div class="connection-device-groups" aria-label="Профили подключения по устройствам">
         {% for card in connection_device_cards %}
             {% set profile = card.profile %}
-            <article class="connection-profile {{ 'ready' if card.ready else 'pending' }}" data-connection-card {% if profile %}data-connection-link="{{ profile.link|e }}" data-connection-name="{{ profile.title|e }}" data-connection-device="{{ profile.device|e }}" data-connection-qr-url="{{ profile.qr_url|e }}"{% endif %}>
-                <div class="connection-profile__top">
-                    <span class="connection-device-icon" aria-hidden="true">{{ card.icon }}</span>
-                    <span class="pill {{ 'success' if card.ready else 'muted' }}">{{ profile.status if profile else 'Нет профиля' }}</span>
-                </div>
-                <div class="connection-profile__copy">
-                    <h3>{{ card.device }}</h3>
-                    <p>{{ profile.title if profile else card.hint }}</p>
-                    {% if profile %}
-                        <small>Создан: {{ profile.created_at }}</small>
-                    {% else %}
-                        <small>Будет создан VLESS-профиль через рабочую логику старого кабинета.</small>
-                    {% endif %}
-                </div>
-
-                {% if profile %}
-                    <div class="connection-profile__actions" aria-label="Действия с VLESS-профилем {{ card.device }}">
-                        <button class="button secondary" type="button" data-connection-copy>Скопировать ссылку</button>
-                        <button class="button secondary" type="button" data-connection-qr-open>Показать QR-код</button>
-                        <a class="button ghost" href="{{ profile.download_url }}" download>Скачать конфиг</a>
+            <section class="connection-device-group" aria-labelledby="connections-{{ card.device|lower|replace(' ', '-') }}-title">
+                <div class="connection-device-group__head">
+                    <div>
+                        <p class="eyebrow">{{ card.device }}</p>
+                        <h3 id="connections-{{ card.device|lower|replace(' ', '-') }}-title">Профили {{ card.device }}</h3>
                     </div>
-                {% else %}
-                    <form class="connection-card-form" method="post" action="/dashboard/create-key" data-connection-form>
+                <form class="connection-card-form inline" method="post" action="/dashboard/create-key" data-connection-form>
                         <input type="hidden" name="key_kind" value="xray" />
                         <input type="hidden" name="return_to" value="/new-ui#connections" />
                         <input type="hidden" name="connection_device" value="{{ card.device }}" data-connection-device />
                         <input type="hidden" name="connection_label" value="профиль" data-connection-label />
                         <input type="hidden" name="key_title" value="{{ card.device }} · VLESS профиль" data-connection-title />
-                        <button class="button primary platform-button" type="submit">Создать профиль</button>
+                        <button class="button primary" type="submit">+ Создать профиль</button>
                     </form>
+                </div>
+
+                {% if card.profiles %}
+                    <div class="connections-grid" aria-label="Профили {{ card.device }}">
+                        {% for profile in card.profiles %}
+                            <article class="connection-profile ready" data-connection-card data-connection-link="{{ profile.link|e }}" data-connection-name="{{ profile.title|e }}" data-connection-device="{{ profile.device|e }}" data-connection-qr-url="{{ profile.qr_url|e }}">
+                                <div class="connection-profile__top">
+                                    <span class="connection-device-icon" aria-hidden="true">{{ card.icon }}</span>
+                                    <span class="pill success">{{ profile.status }}</span>
+                                </div>
+                                <div class="connection-profile__copy">
+                                    <h3>{{ profile.title }}</h3>
+                                    <p>Профиль подключения {{ card.device }}</p>
+                                    <small>Создан: {{ profile.created_at }}</small>
+                                </div>
+
+                                <div class="connection-profile__actions" aria-label="Действия с профилем {{ profile.title }}">
+                                    <button class="button secondary" type="button" data-connection-copy>Скопировать ссылку</button>
+                                    <button class="button secondary" type="button" data-connection-qr-open>Показать QR</button>
+                                    <a class="button ghost" href="{{ profile.download_url }}" download>Скачать конфиг</a>
+                                    <form method="post" action="{{ profile.delete_url }}" data-connection-delete-form>
+                                        <input type="hidden" name="return_to" value="/new-ui#connections" />
+                                        <button class="button danger" type="submit">Удалить</button>
+                                    </form>
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="connections-empty">
+                        <strong>Профилей для {{ card.device }} пока нет</strong>
+                        <p>Нажмите «+ Создать профиль», чтобы добавить отдельный профиль подключения. Технический ключ останется скрытым.</p>
+                    </div>
                 {% endif %}
-            </article>
+            </section>
         {% endfor %}
     </div>
 

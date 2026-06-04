@@ -49,15 +49,20 @@
         menuToggle?.setAttribute("aria-expanded", String(open));
     }
 
-    const connectionQrModal = document.getElementById("connection-qr-modal");
     let activeConnectionTrigger = null;
 
+    function getConnectionModal() {
+        return document.getElementById("connection-qr-modal");
+    }
+
     function closeConnectionModal() {
+        const connectionQrModal = getConnectionModal();
         if (!connectionQrModal?.classList.contains("open")) return;
         connectionQrModal.classList.remove("open");
         connectionQrModal.setAttribute("aria-hidden", "true");
-        connectionQrModal.querySelector("[data-connection-modal-qr]").innerHTML = "";
-        if (!connectionQrModal?.classList.contains("open")) {
+        const qrFrame = connectionQrModal.querySelector("[data-connection-modal-qr]");
+        if (qrFrame) qrFrame.innerHTML = "";
+        if (!getOpenInstructionModal()) {
             document.body.classList.remove("modal-open");
         }
         activeConnectionTrigger?.focus();
@@ -65,12 +70,12 @@
     }
 
     function openConnectionModal(card, trigger) {
+        const connectionQrModal = getConnectionModal();
         if (!connectionQrModal || !card) return;
         closeInstructionModal();
         activeConnectionTrigger = trigger;
         const title = card.dataset.connectionName || "Подключение";
         const device = card.dataset.connectionDevice || "Подключение";
-        const qrTemplate = card.querySelector("[data-connection-qr]");
         const qrTarget = connectionQrModal.querySelector("[data-connection-modal-qr]");
         const qrUrl = card.dataset.connectionQrUrl || "";
         connectionQrModal.querySelector("[data-connection-modal-title]").textContent = title;
@@ -82,8 +87,6 @@
             image.alt = `QR-код подключения ${title}`;
             image.loading = "lazy";
             qrTarget.append(image);
-        } else {
-            qrTarget.innerHTML = qrTemplate?.innerHTML || "";
         }
         connectionQrModal.classList.add("open");
         connectionQrModal.setAttribute("aria-hidden", "false");
@@ -104,7 +107,9 @@
         if (!modal) return;
         modal.classList.remove("open");
         modal.setAttribute("aria-hidden", "true");
-        document.body.classList.remove("modal-open");
+        if (!getConnectionModal()?.classList.contains("open")) {
+            document.body.classList.remove("modal-open");
+        }
         activeInstructionTrigger?.focus();
         activeInstructionTrigger = null;
     }
@@ -164,58 +169,95 @@
         window.setTimeout(() => { button.textContent = original; }, 1600);
     }
 
+    function prepareConnectionTitle(form) {
+        const device = form.querySelector("[data-connection-device]")?.value || "Android";
+        const label = form.querySelector("[data-connection-label]")?.value.trim() || "профиль";
+        const title = form.querySelector("[data-connection-title]");
+        if (title) {
+            const safeLabel = label.toLowerCase().includes("vless") ? label : `VLESS ${label}`;
+            title.value = `${device} · ${safeLabel}`;
+        }
+    }
 
-    document.querySelectorAll("[data-connection-copy]").forEach((button) => {
-        button.addEventListener("click", async () => {
-            const card = button.closest("[data-connection-card]");
+
+    async function replaceConnectionsFromResponse(response) {
+        const html = await response.text();
+        const parsed = new DOMParser().parseFromString(html, "text/html");
+        const nextConnections = parsed.getElementById("connections");
+        const currentConnections = document.getElementById("connections");
+        if (!nextConnections || !currentConnections) {
+            window.location.href = response.url || "/new-ui#connections";
+            return;
+        }
+        closeConnectionModal();
+        currentConnections.replaceWith(nextConnections);
+        document.getElementById("connections")?.scrollIntoView({ block: "start" });
+    }
+
+    document.addEventListener("click", async (event) => {
+        const copyButton = event.target.closest("[data-connection-copy]");
+        if (copyButton) {
+            const card = copyButton.closest("[data-connection-card]");
             const value = card?.dataset.connectionLink || "";
             if (!value) return;
             await copyText(value);
-            flashButtonLabel(button);
-        });
+            flashButtonLabel(copyButton);
+            return;
+        }
+
+        const qrButton = event.target.closest("[data-connection-qr-open]");
+        if (qrButton) {
+            openConnectionModal(qrButton.closest("[data-connection-card]"), qrButton);
+            return;
+        }
+
+        if (event.target.closest("[data-connection-modal-close]")) {
+            closeConnectionModal();
+        }
     });
 
-    document.querySelectorAll("[data-connection-qr-open]").forEach((button) => {
-        button.addEventListener("click", () => {
-            openConnectionModal(button.closest("[data-connection-card]"), button);
-        });
-    });
-
-    connectionQrModal?.querySelectorAll("[data-connection-modal-close]").forEach((button) => {
-        button.addEventListener("click", closeConnectionModal);
-    });
-
-    document.querySelectorAll("[data-connection-form]").forEach((form) => {
-        form.addEventListener("submit", () => {
-            const device = form.querySelector("[data-connection-device]")?.value || "Android";
-            const label = form.querySelector("[data-connection-label]")?.value.trim() || "профиль";
-            const title = form.querySelector("[data-connection-title]");
-            if (title) {
-                const safeLabel = label.toLowerCase().includes("vless") ? label : `VLESS ${label}`;
-                title.value = `${device} · ${safeLabel}`;
-            }
-        });
-    });
-
-    document.querySelectorAll("[data-connection-delete-form]").forEach((form) => {
-        form.addEventListener("submit", async (event) => {
+    document.addEventListener("submit", async (event) => {
+        const createForm = event.target.closest("[data-connection-form]");
+        if (createForm) {
+            prepareConnectionTitle(createForm);
             event.preventDefault();
-            const card = form.closest("[data-connection-card]");
-            const button = form.querySelector("button[type='submit']");
+            const button = createForm.querySelector("button[type='submit']");
             button.disabled = true;
             try {
-                const response = await fetch(form.action, {
+                const response = await fetch(createForm.action, {
                     method: "POST",
-                    body: new FormData(form),
+                    body: new FormData(createForm),
                     credentials: "same-origin",
                 });
-                if (!response.ok || response.url.includes("error=")) throw new Error("delete failed");
-                card?.remove();
+                if (!response.ok) throw new Error("create failed");
+                await replaceConnectionsFromResponse(response);
             } catch (error) {
+                HTMLFormElement.prototype.submit.call(createForm);
+            } finally {
                 button.disabled = false;
-                form.submit();
             }
-        });
+            return;
+        }
+
+        const deleteForm = event.target.closest("[data-connection-delete-form]");
+        if (deleteForm) {
+            event.preventDefault();
+            const button = deleteForm.querySelector("button[type='submit']");
+            button.disabled = true;
+            try {
+                const response = await fetch(deleteForm.action, {
+                    method: "POST",
+                    body: new FormData(deleteForm),
+                    credentials: "same-origin",
+                });
+                if (!response.ok) throw new Error("delete failed");
+                await replaceConnectionsFromResponse(response);
+            } catch (error) {
+                HTMLFormElement.prototype.submit.call(deleteForm);
+            } finally {
+                button.disabled = false;
+            }
+        }
     });
 
     document.querySelectorAll("[data-copy-target]").forEach((button) => {
