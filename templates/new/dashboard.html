@@ -200,7 +200,7 @@
                                 <div class="connection-profile__actions" aria-label="Действия с профилем {{ profile.title }}">
                                     <button class="button secondary" type="button" data-connection-copy>Скопировать ссылку</button>
                                     <button class="button secondary" type="button" data-connection-qr-open>Показать QR</button>
-                                    <a class="button ghost" href="{{ profile.download_url }}" download>Скачать конфиг</a>
+                                    <a class="button ghost" href="{{ profile.download_url }}" download data-connection-download>Скачать конфиг</a>
                                     <form method="post" action="{{ profile.delete_url }}" data-connection-delete-form>
                                         <input type="hidden" name="return_to" value="/new-ui#connections" />
                                         <button class="button danger" type="submit">Удалить</button>

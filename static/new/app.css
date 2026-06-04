@@ -168,6 +168,7 @@ h3 { font-size: 18px; }
     box-shadow: var(--shadow);
 }
 .card { padding: 24px; }
+.my-connections, .connections-section { padding: 28px; }
 .card-head, .section-title, .button-row, .metric-row, .invite-link-box { display: flex; gap: 14px; }
 .card-head, .section-title { justify-content: space-between; align-items: flex-start; }
 .hero-card { min-height: 280px; display: flex; flex-direction: column; justify-content: space-between; }
@@ -231,14 +232,14 @@ h3 { font-size: 18px; }
 .button.danger { color: #fff; background: #ef4444; border-color: rgba(239, 68, 68, 0.28); }
 .button.danger:hover { background: #dc2626; }
 
-.my-connections, .connections-section { overflow: hidden; padding: 28px; }
+.my-connections, .connections-section { overflow: hidden; }
 .connection-toolbar { display: flex; justify-content: flex-start; margin: 0 0 28px; }
 .connection-form { display: grid; grid-template-columns: minmax(180px, 0.8fr) minmax(240px, 1.4fr) auto; gap: 14px; align-items: end; margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface-muted); }
 .connection-form label { display: grid; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 800; }
 .connection-form input, .connection-form select { min-height: 46px; width: 100%; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 14px; padding: 0 14px; }
 .connection-form input::placeholder { color: var(--muted); }
 
-.connections-grid, .profile-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; gap: 18px; }
+.connections-grid, .profile-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; gap: 18px; margin-top: 14px; }
 .connection-profile, .profile-card { display: flex; min-width: 0; min-height: 360px; height: 100%; flex-direction: column; padding: 22px; border: 1px solid var(--border); border-radius: 20px; background: linear-gradient(180deg, rgba(37, 99, 235, 0.12), transparent 70%), var(--surface-muted); }
 .connection-profile__top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
 .connection-device-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 17px; color: #fff; background: linear-gradient(135deg, var(--brand), #60a5fa); font-weight: 900; box-shadow: 0 14px 28px rgba(37, 99, 235, 0.24); }
@@ -248,7 +249,8 @@ h3 { font-size: 18px; }
 .connection-profile__actions { display: grid; gap: 12px; margin-top: 24px; }
 .connection-profile__actions .button, .connection-profile__actions form { width: 100%; }
 .connection-profile__actions .button { min-height: 44px; padding-inline: 12px; font-size: 14px; }
-.connections-empty { margin-top: 12px; padding: 20px; border: 1px dashed var(--border); border-radius: 18px; background: var(--surface-muted); }
+.connections-empty, .os-section .empty-state { margin-top: 12px; }
+.connections-empty { padding: 20px; border: 1px dashed var(--border); border-radius: 18px; background: var(--surface-muted); }
 .connections-empty strong { display: block; margin-bottom: 8px; }
 .connections-empty p { margin: 0; color: var(--muted); line-height: 1.55; }
 .connection-modal { position: fixed; z-index: 92; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; }
@@ -263,11 +265,11 @@ h3 { font-size: 18px; }
 .modal-form .button { width: 100%; }
 
 @media (max-width: 1280px) and (min-width: 1081px) {
-    .connections-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .connections-grid, .profile-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 1080px) {
-    .connections-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .connections-grid, .profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .connection-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .connection-form .button { grid-column: 1 / -1; }
     .modal-form { grid-template-columns: 1fr; }
@@ -275,8 +277,8 @@ h3 { font-size: 18px; }
 
 @media (max-width: 760px) {
     .connection-form { grid-template-columns: 1fr; }
-    .connections-grid { display: flex; overflow-x: auto; gap: 16px; padding-bottom: 8px; scroll-snap-type: x mandatory; }
-    .connection-profile { min-width: min(300px, 84vw); scroll-snap-align: start; }
+    .connections-grid, .profile-grid { display: flex; overflow-x: auto; gap: 18px; padding-bottom: 8px; scroll-snap-type: x mandatory; }
+    .connection-profile, .profile-card { min-width: min(300px, 84vw); scroll-snap-align: start; }
     .connection-modal { padding: 16px; align-items: flex-end; }
     .connection-modal__panel { max-height: calc(100vh - 32px); padding: 20px; border-radius: 22px; }
 }
@@ -372,12 +374,10 @@ th { color: var(--muted); font-size: 13px; }
 }
 .connection-device-group, .os-section {
     display: grid;
-    gap: 14px;
     min-width: 0;
 }
 .connection-device-group + .connection-device-group,
 .os-section + .os-section {
-    padding-top: 28px;
     border-top: 1px solid var(--border);
 }
 .connection-device-group__head, .os-section-header {
@@ -403,5 +403,8 @@ th { color: var(--muted); font-size: 13px; }
     }
     .connection-toolbar .button {
         width: 100%;
+    }
+    .my-connections, .connections-section {
+        padding: 28px;
     }
 }
