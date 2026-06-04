@@ -1,11 +1,11 @@
 (() => {
     document.addEventListener("DOMContentLoaded", () => {
-    const root = document.documentElement;
+        const root = document.documentElement;
         const storageKey = "onlyus-theme";
         const themeSelect = document.querySelector("[data-theme-select]");
         const systemQuery = window.matchMedia("(prefers-color-scheme: light)");
 
-    const sidebar = document.getElementById("sidebar");
+        const sidebar = document.getElementById("sidebar");
         const menuToggle = document.querySelector("[data-menu-toggle]");
         const backdrop = document.querySelector("[data-menu-backdrop]");
 
@@ -15,6 +15,13 @@
         let activeInstructionTrigger = null;
         let activeConnectionTrigger = null;
         let activeProfileCreateTrigger = null;
+        const warnedMissingElements = new Set();
+
+        function warnMissingElement(key, message) {
+            if (warnedMissingElements.has(key)) return;
+            warnedMissingElements.add(key);
+            console.warn(message);
+        }
 
         function resolveTheme(value) {
             if (value === "system") {
@@ -74,7 +81,10 @@
 
         function closeInstructionModal() {
             const modal = getOpenInstructionModal();
-            if (!modal) return;
+            if (!modal) {
+                warnMissingElement("profile-create-modal", "Profile create modal #profile-create-modal was not found.");
+                return;
+            }
             modal.classList.remove("open");
             modal.setAttribute("aria-hidden", "true");
             if (!hasOpenModal()) document.body.classList.remove("modal-open");
@@ -194,8 +204,19 @@
 
 
         function bindProfileCreateButton() {
+            const connectionsSection = document.getElementById("connections");
+            if (!connectionsSection) return;
             const button = document.getElementById("open-create-profile-modal");
-            if (!button || button.dataset.profileCreateBound === "true") return;
+            const modal = getProfileCreateModal();
+
+            if (!button) {
+                warnMissingElement("open-create-profile-modal", "Profile create button #open-create-profile-modal was not found.");
+                return;
+            }
+            if (!modal) {
+                warnMissingElement("profile-create-modal", "Profile create modal #profile-create-modal was not found.");
+            }
+            if (button.dataset.profileCreateBound === "true") return;
             button.dataset.profileCreateBound = "true";
             button.addEventListener("click", () => openProfileCreateModal(button));
         }
@@ -264,6 +285,12 @@
             const qrButton = event.target.closest("[data-connection-qr-open]");
             if (qrButton) {
                 openConnectionModal(qrButton.closest("[data-connection-card]"), qrButton);
+                return;
+            }
+            const downloadLink = event.target.closest("[data-connection-download]");
+            if (downloadLink && !downloadLink.getAttribute("href")) {
+                event.preventDefault();
+                warnMissingElement("connection-download-url", "Connection download link is missing an href.");
                 return;
             }
 
