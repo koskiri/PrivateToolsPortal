@@ -328,3 +328,41 @@ th { color: var(--muted); font-size: 13px; }
     .stats-grid { grid-template-columns: 1fr; }
     .card { padding: 20px; }
 }
+.connection-profile.ready {
+    background:
+        linear-gradient(180deg, rgba(16, 185, 129, 0.14), transparent 72%),
+        var(--surface-muted);
+}
+.connection-profile.pending {
+    background:
+        linear-gradient(180deg, rgba(37, 99, 235, 0.10), transparent 72%),
+        var(--surface-muted);
+}
+.connection-profile__copy small {
+    display: block;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+.connection-card-form {
+    width: 100%;
+    margin-top: 20px;
+}
+.connection-card-form .platform-button {
+    margin-top: 0;
+}
+.connection-profile.pending .connection-device-icon {
+    background: linear-gradient(135deg, #64748b, var(--brand));
+}
+[data-theme="light"] .connection-profile,
+[data-theme="light"] .platform-card {
+    background:
+        linear-gradient(180deg, rgba(37, 99, 235, 0.08), transparent 72%),
+        var(--surface-muted);
+}
+[data-theme="light"] .connection-profile.ready {
+    background:
+        linear-gradient(180deg, rgba(16, 185, 129, 0.16), transparent 72%),
+        var(--surface-muted);
+}

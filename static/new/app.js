@@ -140,16 +140,38 @@
         }
     });
 
+    async function copyText(value) {
+        if (!value) return false;
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(value);
+            return true;
+        }
+        const helper = document.createElement("textarea");
+        helper.value = value;
+        helper.setAttribute("readonly", "");
+        helper.style.position = "fixed";
+        helper.style.inset = "-1000px auto auto -1000px";
+        document.body.append(helper);
+        helper.select();
+        const copied = document.execCommand("copy");
+        helper.remove();
+        return copied;
+    }
+
+    function flashButtonLabel(button, label = "Скопировано") {
+        const original = button.textContent;
+        button.textContent = label;
+        window.setTimeout(() => { button.textContent = original; }, 1600);
+    }
+
 
     document.querySelectorAll("[data-connection-copy]").forEach((button) => {
         button.addEventListener("click", async () => {
             const card = button.closest("[data-connection-card]");
             const value = card?.dataset.connectionLink || "";
             if (!value) return;
-            await navigator.clipboard.writeText(value);
-            const original = button.textContent;
-            button.textContent = "Скопировано";
-            window.setTimeout(() => { button.textContent = original; }, 1600);
+            await copyText(value);
+            flashButtonLabel(button);
         });
     });
 
@@ -166,9 +188,12 @@
     document.querySelectorAll("[data-connection-form]").forEach((form) => {
         form.addEventListener("submit", () => {
             const device = form.querySelector("[data-connection-device]")?.value || "Android";
-            const label = form.querySelector("[data-connection-label]")?.value.trim() || "Устройство";
+            const label = form.querySelector("[data-connection-label]")?.value.trim() || "профиль";
             const title = form.querySelector("[data-connection-title]");
-            if (title) title.value = `${device} · ${label}`;
+            if (title) {
+                const safeLabel = label.toLowerCase().includes("vless") ? label : `VLESS ${label}`;
+                title.value = `${device} · ${safeLabel}`;
+            }
         });
     });
 
@@ -197,10 +222,8 @@
         button.addEventListener("click", async () => {
             const target = document.getElementById(button.dataset.copyTarget || "");
             if (!target || !target.value) return;
-            await navigator.clipboard.writeText(target.value);
-            const original = button.textContent;
-            button.textContent = "Скопировано";
-            window.setTimeout(() => { button.textContent = original; }, 1600);
+            await copyText(target.value);
+            flashButtonLabel(button);
         });
     });
 })();

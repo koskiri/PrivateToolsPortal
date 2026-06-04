@@ -169,60 +169,43 @@
         <span class="instruction-badge">{{ connections_active }} / {{ connections_limit }} профилей</span>
     </div>
 
-    <details class="connection-create" data-connection-create>
-        <summary class="button primary connection-add-button">+ Добавить подключение</summary>
-        <form class="connection-form" method="post" action="/dashboard/create-key" data-connection-form>
-            <input type="hidden" name="key_kind" value="awg" />
-            <input type="hidden" name="return_to" value="/new-ui#connections" />
-            <input type="hidden" name="key_title" data-connection-title />
-            <label>
-                <span>Устройство</span>
-                <select name="connection_device" data-connection-device required>
-                    <option value="Android">Android</option>
-                    <option value="iPhone">iPhone</option>
-                    <option value="Windows">Windows</option>
-                    <option value="macOS">macOS</option>
-                </select>
-            </label>
-            <label>
-                <span>Название подключения</span>
-                <input type="text" name="connection_label" data-connection-label placeholder="Например, телефон" maxlength="80" required />
-            </label>
-            <button class="button primary" type="submit">Создать</button>
-        </form>
-    </details>
+    <div class="connections-grid" aria-label="Карточки устройств VLESS">
+        {% for card in connection_device_cards %}
+            {% set profile = card.profile %}
+            <article class="connection-profile {{ 'ready' if card.ready else 'pending' }}" data-connection-card {% if profile %}data-connection-link="{{ profile.link|e }}" data-connection-name="{{ profile.title|e }}" data-connection-device="{{ profile.device|e }}" data-connection-qr-url="{{ profile.qr_url|e }}"{% endif %}>
+                <div class="connection-profile__top">
+                    <span class="connection-device-icon" aria-hidden="true">{{ card.icon }}</span>
+                    <span class="pill {{ 'success' if card.ready else 'muted' }}">{{ profile.status if profile else 'Нет профиля' }}</span>
+                </div>
+                <div class="connection-profile__copy">
+                    <h3>{{ card.device }}</h3>
+                    <p>{{ profile.title if profile else card.hint }}</p>
+                    {% if profile %}
+                        <small>Создан: {{ profile.created_at }}</small>
+                    {% else %}
+                        <small>Будет создан VLESS-профиль через рабочую логику старого кабинета.</small>
+                    {% endif %}
+                </div>
 
-    {% if connection_profiles %}
-        <div class="connections-grid" aria-label="Список подключений">
-            {% for profile in connection_profiles %}
-                <article class="connection-profile" data-connection-card data-connection-link="{{ profile.link|e }}" data-connection-name="{{ profile.title|e }}" data-connection-device="{{ profile.device|e }}" data-connection-qr-url="{{ profile.qr_url|e }}">
-                    <div class="connection-profile__top">
-                        <span class="connection-device-icon" aria-hidden="true">{{ profile.device[0] }}</span>
-                        <span class="pill success">{{ profile.status }}</span>
-                    </div>
-                    <div class="connection-profile__copy">
-                        <h3>{{ profile.title }}</h3>
-                        <p>{{ profile.device }}</p>
-                    </div>
-                    <div class="connection-profile__actions" aria-label="Действия с подключением {{ profile.title }}">
+                {% if profile %}
+                    <div class="connection-profile__actions" aria-label="Действия с VLESS-профилем {{ card.device }}">
                         <button class="button secondary" type="button" data-connection-copy>Скопировать ссылку</button>
                         <button class="button secondary" type="button" data-connection-qr-open>Показать QR-код</button>
                         <a class="button ghost" href="{{ profile.download_url }}" download>Скачать конфиг</a>
-                        <form method="post" action="{{ profile.delete_url }}" data-connection-delete-form>
-                            <input type="hidden" name="return_to" value="/new-ui#connections" />
-                            <button class="button danger" type="submit">Удалить</button>
-                        </form>
                     </div>
-                    <template data-connection-qr>{{ profile.qr_svg|safe }}</template>
-                </article>
-            {% endfor %}
-        </div>
-    {% else %}
-        <div class="connections-empty">
-            <strong>Пока нет подключений</strong>
-            <p>Добавьте первый профиль для телефона, ноутбука или компьютера — карточка появится здесь после генерации на backend.</p>
-        </div>
-    {% endif %}
+                {% else %}
+                    <form class="connection-card-form" method="post" action="/dashboard/create-key" data-connection-form>
+                        <input type="hidden" name="key_kind" value="xray" />
+                        <input type="hidden" name="return_to" value="/new-ui#connections" />
+                        <input type="hidden" name="connection_device" value="{{ card.device }}" data-connection-device />
+                        <input type="hidden" name="connection_label" value="профиль" data-connection-label />
+                        <input type="hidden" name="key_title" value="{{ card.device }} · VLESS профиль" data-connection-title />
+                        <button class="button primary platform-button" type="submit">Создать профиль</button>
+                    </form>
+                {% endif %}
+            </article>
+        {% endfor %}
+    </div>
 
     <div class="connection-modal" id="connection-qr-modal" role="dialog" aria-modal="true" aria-labelledby="connection-qr-title" aria-hidden="true">
         <div class="connection-modal__backdrop" data-connection-modal-close></div>

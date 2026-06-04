@@ -269,21 +269,35 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
     ]
     primary_invite_link = invite_history[0]["invite_link"] if invite_history else ""
 
-    connection_profiles = [
-        {
+    vless_profiles_by_device: dict[str, dict] = {}
+    for row in key_rows:
+        if row["kind"] != "xray":
+            continue
+        device = _device_from_key_title(row["title"])
+        if device in vless_profiles_by_device:
+            continue
+        vless_profiles_by_device[device] = {
             "id": row["id"],
-            "title": row["title"] or f"Подключение #{row['id']}",
-            "device": _device_from_key_title(row["title"]),
-            "status": "Готово",
+            "title": row["title"] or f"VLESS профиль #{row['id']}",
+            "device": device,
+            "status": "Профиль готов",
             "link": row["payload"] or "",
-            "qr_svg": _build_inline_qr_svg(row["payload"] or ""),
             "qr_url": f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data={quote_plus(row['payload'] or '')}",
             "download_url": f"/dashboard/keys/{row['id']}/download",
-            "delete_url": f"/dashboard/keys/{row['id']}/delete",
             "created_at": _format_new_ui_date(row["created_at"]),
         }
-        for row in key_rows
-    ]
+    connection_device_cards = []
+    for device in ("Android", "iPhone", "Windows", "macOS"):
+        profile = vless_profiles_by_device.get(device)
+        connection_device_cards.append({
+            "device": device,
+            "icon": "A" if device == "Android" else "i" if device == "iPhone" else "W" if device == "Windows" else "M",
+            "hint": "VLESS профиль для приложения VPN",
+            "profile": profile,
+            "ready": profile is not None,
+        })
+
+    connection_profiles = [card["profile"] for card in connection_device_cards if card["profile"]]
 
     login = user["login"] or ""
     # В portal_users нет отдельных полей email/telegram username; показываем безопасные значения без технических ID.
@@ -317,8 +331,9 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         "vk_bot_link": get_vk_bot_link() or "#",
         "telegram_support_link": "#",  # TODO: подключить реальную ссылку Telegram-поддержки, когда она появится в настройках проекта.
         "connection_profiles": connection_profiles,
+        "connection_device_cards": connection_device_cards,
         "connections_limit": int(stats["key_limit"] or 0) if stats else 0,
-        "connections_active": int(stats["active_keys"] or 0) if stats else 0,
+        "connections_active": len(connection_profiles),
     }
 
 
