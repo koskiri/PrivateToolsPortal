@@ -50,6 +50,36 @@
     }
 
     let activeConnectionTrigger = null;
+    let activeProfileCreateTrigger = null;
+
+    function getProfileCreateModal() {
+        return document.getElementById("profile-create-modal");
+    }
+
+    function closeProfileCreateModal() {
+        const modal = getProfileCreateModal();
+        if (!modal?.classList.contains("open")) return;
+        modal.classList.remove("open");
+        modal.setAttribute("aria-hidden", "true");
+        if (!getOpenInstructionModal() && !getConnectionModal()?.classList.contains("open")) {
+            document.body.classList.remove("modal-open");
+        }
+        activeProfileCreateTrigger?.focus();
+        activeProfileCreateTrigger = null;
+    }
+
+    function openProfileCreateModal(trigger) {
+        const modal = getProfileCreateModal();
+        if (!modal) return;
+        closeInstructionModal();
+        closeConnectionModal();
+        activeProfileCreateTrigger = trigger;
+        modal.classList.add("open");
+        modal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("modal-open");
+        modal.querySelector(".connection-modal__panel")?.focus();
+        modal.querySelector("[data-connection-label]")?.focus();
+    }
 
     function getConnectionModal() {
         return document.getElementById("connection-qr-modal");
@@ -62,7 +92,7 @@
         connectionQrModal.setAttribute("aria-hidden", "true");
         const qrFrame = connectionQrModal.querySelector("[data-connection-modal-qr]");
         if (qrFrame) qrFrame.innerHTML = "";
-        if (!getOpenInstructionModal()) {
+        if (!getOpenInstructionModal() && !getProfileCreateModal()?.classList.contains("open")) {
             document.body.classList.remove("modal-open");
         }
         activeConnectionTrigger?.focus();
@@ -73,6 +103,7 @@
         const connectionQrModal = getConnectionModal();
         if (!connectionQrModal || !card) return;
         closeInstructionModal();
+        closeProfileCreateModal();
         activeConnectionTrigger = trigger;
         const title = card.dataset.connectionName || "Подключение";
         const device = card.dataset.connectionDevice || "Подключение";
@@ -107,7 +138,7 @@
         if (!modal) return;
         modal.classList.remove("open");
         modal.setAttribute("aria-hidden", "true");
-        if (!getConnectionModal()?.classList.contains("open")) {
+        if (!getConnectionModal()?.classList.contains("open") && !getProfileCreateModal()?.classList.contains("open")) {
             document.body.classList.remove("modal-open");
         }
         activeInstructionTrigger?.focus();
@@ -119,6 +150,7 @@
         if (!modal) return;
         closeInstructionModal();
         closeConnectionModal();
+        closeProfileCreateModal();
         activeInstructionTrigger = trigger;
         modal.classList.add("open");
         modal.setAttribute("aria-hidden", "false");
@@ -142,6 +174,7 @@
         if (event.key === "Escape") {
             closeInstructionModal();
             closeConnectionModal();
+            closeProfileCreateModal();
         }
     });
 
@@ -190,11 +223,22 @@
             return;
         }
         closeConnectionModal();
+        closeProfileCreateModal();
         currentConnections.replaceWith(nextConnections);
         document.getElementById("connections")?.scrollIntoView({ block: "start" });
     }
 
     document.addEventListener("click", async (event) => {
+        const profileCreateButton = event.target.closest("[data-profile-create-open]");
+        if (profileCreateButton) {
+            openProfileCreateModal(profileCreateButton);
+            return;
+        }
+
+        if (event.target.closest("[data-profile-create-close]")) {
+            closeProfileCreateModal();
+            return;
+        }
         const copyButton = event.target.closest("[data-connection-copy]");
         if (copyButton) {
             const card = copyButton.closest("[data-connection-card]");

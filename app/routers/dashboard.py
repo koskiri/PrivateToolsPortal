@@ -154,6 +154,8 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
         },
     )
 
+CONNECTION_DEVICES = ("Android", "iPhone", "Windows", "macOS")
+
 def _device_from_key_title(title: str | None) -> str:
     value = (title or "").strip().lower()
     if value.startswith("android") or "android" in value:
@@ -166,6 +168,24 @@ def _device_from_key_title(title: str | None) -> str:
         return "macOS"
     return "Android"
 
+def _profile_title_from_key_title(title: str | None, device: str) -> str:
+    value = (title or "").strip()
+    if not value:
+        return "Профиль подключения"
+
+    separators = (" · ", " - ", " — ", ": ")
+    for separator in separators:
+        prefix = f"{device}{separator}"
+        if value.lower().startswith(prefix.lower()):
+            value = value[len(prefix):].strip()
+            break
+
+    for prefix in ("VLESS ", "Vless ", "vless "):
+        if value.startswith(prefix):
+            value = value[len(prefix):].strip()
+            break
+
+    return value or "Профиль подключения"
 
 def _safe_new_ui_redirect(return_to: str | None, fallback: str = "/dashboard") -> str:
     if return_to and return_to.startswith("/new-ui"):
@@ -269,11 +289,9 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
     ]
     primary_invite_link = invite_history[0]["invite_link"] if invite_history else ""
 
-    connection_devices = (
-        {"device": "Android", "icon": "A"},
-        {"device": "iPhone", "icon": "i"},
-        {"device": "Windows", "icon": "W"},
-        {"device": "macOS", "icon": "M"},
+    connection_devices = tuple(
+        {"device": device, "icon": device[0] if device != "iPhone" else "i"}
+        for device in CONNECTION_DEVICES
     )
     vless_profiles_by_device: dict[str, list[dict]] = {device["device"]: [] for device in connection_devices}
     for row in key_rows:
@@ -282,7 +300,7 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         device = _device_from_key_title(row["title"])
         profile = {
             "id": row["id"],
-            "title": row["title"] or f"VLESS профиль #{row['id']}",
+            "title": _profile_title_from_key_title(row["title"], device),
             "device": device,
             "status": "Готово",
             "link": row["payload"] or "",

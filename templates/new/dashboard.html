@@ -169,23 +169,18 @@
         <span class="instruction-badge">{{ connections_active }} / {{ connections_limit }} профилей</span>
     </div>
 
+    <div class="connection-toolbar">
+        <button class="button primary" type="button" data-profile-create-open>+ Создать профиль</button>
+    </div>
+
     <div class="connection-device-groups" aria-label="Профили подключения по устройствам">
         {% for card in connection_device_cards %}
-            {% set profile = card.profile %}
             <section class="connection-device-group" aria-labelledby="connections-{{ card.device|lower|replace(' ', '-') }}-title">
                 <div class="connection-device-group__head">
                     <div>
                         <p class="eyebrow">{{ card.device }}</p>
-                        <h3 id="connections-{{ card.device|lower|replace(' ', '-') }}-title">Профили {{ card.device }}</h3>
+                        <h3 id="connections-{{ card.device|lower|replace(' ', '-') }}-title">{{ card.device }}</h3>
                     </div>
-                <form class="connection-card-form inline" method="post" action="/dashboard/create-key" data-connection-form>
-                        <input type="hidden" name="key_kind" value="xray" />
-                        <input type="hidden" name="return_to" value="/new-ui#connections" />
-                        <input type="hidden" name="connection_device" value="{{ card.device }}" data-connection-device />
-                        <input type="hidden" name="connection_label" value="профиль" data-connection-label />
-                        <input type="hidden" name="key_title" value="{{ card.device }} · VLESS профиль" data-connection-title />
-                        <button class="button primary" type="submit">+ Создать профиль</button>
-                    </form>
                 </div>
 
                 {% if card.profiles %}
@@ -217,11 +212,42 @@
                 {% else %}
                     <div class="connections-empty">
                         <strong>Профилей для {{ card.device }} пока нет</strong>
-                        <p>Нажмите «+ Создать профиль», чтобы добавить отдельный профиль подключения. Технический ключ останется скрытым.</p>
+                        <p>Нажмите единую кнопку «Создать профиль» сверху блока, чтобы добавить отдельный профиль подключения. Технический ключ останется скрытым.</p>
                     </div>
                 {% endif %}
             </section>
         {% endfor %}
+    </div>
+
+    <div class="connection-modal profile-create-modal" id="profile-create-modal" role="dialog" aria-modal="true" aria-labelledby="profile-create-title" aria-hidden="true">
+        <div class="connection-modal__backdrop" data-profile-create-close></div>
+        <div class="connection-modal__panel" tabindex="-1">
+            <div class="instruction-modal__head">
+                <div>
+                    <p class="eyebrow">Новый профиль</p>
+                    <h3 id="profile-create-title">Создать профиль подключения</h3>
+                </div>
+                <button class="icon-button instruction-modal__close" type="button" data-profile-create-close aria-label="Закрыть создание профиля">×</button>
+            </div>
+            <form class="connection-form modal-form" method="post" action="/dashboard/create-key" data-connection-form data-profile-create-form>
+                <input type="hidden" name="key_kind" value="xray" />
+                <input type="hidden" name="return_to" value="/new-ui#connections" />
+                <input type="hidden" name="key_title" value="" data-connection-title />
+                <label>
+                    <span>Операционная система</span>
+                    <select name="connection_device" data-connection-device required>
+                        {% for card in connection_device_cards %}
+                            <option value="{{ card.device }}">{{ card.device }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span>Название профиля</span>
+                    <input name="connection_label" type="text" data-connection-label placeholder="Например: Телефон, Ноутбук, Дом" maxlength="80" required />
+                </label>
+                <button class="button primary" type="submit">Создать</button>
+            </form>
+        </div>
     </div>
 
     <div class="connection-modal" id="connection-qr-modal" role="dialog" aria-modal="true" aria-labelledby="connection-qr-title" aria-hidden="true">

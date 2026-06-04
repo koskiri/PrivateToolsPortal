@@ -232,16 +232,14 @@ h3 { font-size: 18px; }
 .button.danger:hover { background: #dc2626; }
 
 .my-connections { overflow: hidden; }
-.connection-create { margin-bottom: 18px; }
-.connection-create summary { width: fit-content; list-style: none; }
-.connection-create summary::-webkit-details-marker { display: none; }
+.connection-toolbar { display: flex; justify-content: flex-start; margin: -6px 0 24px; }
 .connection-form { display: grid; grid-template-columns: minmax(180px, 0.8fr) minmax(240px, 1.4fr) auto; gap: 14px; align-items: end; margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface-muted); }
 .connection-form label { display: grid; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 800; }
 .connection-form input, .connection-form select { min-height: 46px; width: 100%; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 14px; padding: 0 14px; }
 .connection-form input::placeholder { color: var(--muted); }
 
-.connections-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
-.connection-profile { display: flex; min-width: 0; min-height: 330px; flex-direction: column; padding: 18px; border: 1px solid var(--border); border-radius: 20px; background: linear-gradient(180deg, rgba(37, 99, 235, 0.12), transparent 70%), var(--surface-muted); }
+.connections-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; gap: 18px; }
+.connection-profile { display: flex; min-width: 0; min-height: 330px; height: 100%; flex-direction: column; padding: 18px; border: 1px solid var(--border); border-radius: 20px; background: linear-gradient(180deg, rgba(37, 99, 235, 0.12), transparent 70%), var(--surface-muted); }
 .connection-profile__top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
 .connection-device-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 17px; color: #fff; background: linear-gradient(135deg, var(--brand), #60a5fa); font-weight: 900; box-shadow: 0 14px 28px rgba(37, 99, 235, 0.24); }
 .connection-profile__copy { flex: 1; min-width: 0; }
@@ -260,11 +258,19 @@ h3 { font-size: 18px; }
 .connection-qr-frame { display: grid; place-items: center; padding: 18px; border: 1px solid var(--border); border-radius: 20px; background: #fff; }
 .connection-qr-frame svg, .connection-qr-frame img { width: min(260px, 100%); height: auto; display: block; }
 .connection-modal__hint { margin: 16px 0 0; color: var(--muted); line-height: 1.55; }
+.profile-create-modal .connection-modal__panel { width: min(560px, 100%); }
+.modal-form { grid-template-columns: 1fr; margin-top: 0; }
+.modal-form .button { width: 100%; }
+
+@media (max-width: 1280px) and (min-width: 1081px) {
+    .connections-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 
 @media (max-width: 1080px) {
     .connections-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .connection-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .connection-form .button { grid-column: 1 / -1; }
+    .modal-form { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
@@ -345,13 +351,7 @@ th { color: var(--muted); font-size: 13px; }
     font-size: 12px;
     line-height: 1.45;
 }
-.connection-card-form {
-    width: 100%;
-    margin-top: 20px;
-}
-.connection-card-form .platform-button {
-    margin-top: 0;
-}
+
 .connection-profile.pending .connection-device-icon {
     background: linear-gradient(135deg, #64748b, var(--brand));
 }
@@ -368,13 +368,17 @@ th { color: var(--muted); font-size: 13px; }
 }
 .connection-device-groups {
     display: grid;
-    gap: 24px;
+    gap: 26px;
 }
 .connection-device-group {
     display: grid;
-    gap: 16px;
+    gap: 18px;
     min-width: 0;
+    margin-bottom: 26px;
     padding-top: 4px;
+}
+.connection-device-group:last-child {
+    margin-bottom: 0;
 }
 .connection-device-group + .connection-device-group {
     padding-top: 22px;
@@ -386,14 +390,7 @@ th { color: var(--muted); font-size: 13px; }
     justify-content: space-between;
     gap: 16px;
 }
-.connection-card-form.inline {
-    width: auto;
-    flex: 0 0 auto;
-    margin-top: 0;
-}
-.connection-card-form.inline .button {
-    white-space: nowrap;
-}
+
 .connection-profile__actions form {
     margin: 0;
 }
@@ -405,8 +402,7 @@ th { color: var(--muted); font-size: 13px; }
     .connection-device-group__head {
         display: grid;
     }
-    .connection-card-form.inline,
-    .connection-card-form.inline .button {
+    .connection-toolbar .button {
         width: 100%;
     }
 }
