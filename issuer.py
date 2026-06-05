@@ -41,6 +41,7 @@ class KeyRequest(BaseModel):
     kind: str
     title: str
     telegram_id: int
+    device: Optional[str] = None
 
 
 class RevokeKeyRequest(BaseModel):
@@ -426,6 +427,30 @@ python3 -c 'import json, os; print(json.dumps({{
     }
 
 
+
+
+XRAY_DEVICE_CONFIG = {
+    "android": {"config": "/usr/local/etc/xray/conf.d/00-android.json", "port": 8443},
+    "windows": {"config": "/usr/local/etc/xray/conf.d/02-windows.json", "port": 8444},
+}
+XRAY_LEGACY_CONFIG = "/usr/local/etc/xray/config.json"
+XRAY_SERVICE_CANDIDATES = (
+    os.getenv("XRAY_SERVICE", "").strip(),
+    "xray.service",
+    "xray-reality.service",
+)
+
+
+def normalize_xray_device(device: Optional[str]) -> str:
+    value = (device or "").strip().lower().replace(" ", "")
+    if value in {"windows", "win", "виндовс"}:
+        return "windows"
+    return "android"
+
+
+def xray_device_config(device: Optional[str]) -> dict:
+    return XRAY_DEVICE_CONFIG[normalize_xray_device(device)]
+
 def revoke_awg_peer(vps: dict, peer_pub: Optional[str], peer_ip: Optional[str]) -> None:
     if not peer_pub:
         raise RuntimeError("Missing AWG peer public key")
@@ -438,31 +463,119 @@ def revoke_awg_peer(vps: dict, peer_pub: Optional[str], peer_ip: Optional[str]) 
     ssh_cmd(vps, f"bash -lc {shlex.quote(cmd)}")
 
 
-def create_xray_client(vps: dict, name: str) -> dict:
-    preflight = ssh_cmd(
-        vps,
-        "if [ -x /usr/local/bin/xray-bot ]; then "
-        "echo '__OK__'; "
-        "else echo '__MISSING__'; "
-        "ls -l /usr/local/bin/xray-bot 2>/dev/null || true; "
-        "fi",
-    )
-    if not preflight.startswith("__OK__"):
-        details = preflight.replace("__MISSING__", "").strip() or "file missing"
-        raise RuntimeError(f"xray-bot not ready: {details}")
+def _xray_service_restart_script() -> str:
+    services = " ".join(shlex.quote(name) for name in XRAY_SERVICE_CANDIDATES if name)
+    return f"""
+service_restarted=0
+for svc in {services}; do
+  if systemctl list-unit-files "$svc" >/dev/null 2>&1 || systemctl status "$svc" >/dev/null 2>&1; then
+    systemctl restart "$svc"
+    systemctl is-active --quiet "$svc"
+    service_restarted=1
+    break
+  fi
+done
+if [ "$service_restarted" -ne 1 ]; then
+  echo "No Xray systemd service found" >&2
+  exit 1
+fi
+""".strip()
 
+
+def create_xray_client(vps: dict, name: str, device: Optional[str] = None) -> dict:
+    device_name = normalize_xray_device(device)
+    device_meta = xray_device_config(device_name)
+    config_file = device_meta["config"]
+    port = int(device_meta["port"])
     safe_name = sanitize_name(name)
     client_id = str(uuid.uuid4())
-    cmd = f"/usr/local/bin/xray-bot create {safe_name} {client_id}"
-    out = ssh_cmd(vps, cmd)
 
+    remote_script = f"""
+set -euo pipefail
+CONFIG_FILE={shlex.quote(config_file)}
+CLIENT_ID={shlex.quote(client_id)}
+CLIENT_EMAIL={shlex.quote(safe_name)}
+EXPECTED_PORT={port}
+
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo "Xray config file not found: $CONFIG_FILE" >&2
+  exit 1
+fi
+if ! command -v xray >/dev/null 2>&1; then
+  echo "xray binary not found" >&2
+  exit 1
+fi
+
+python3 - <<'PY'
+import json
+import os
+import shutil
+import tempfile
+from pathlib import Path
+
+path = Path(os.environ["CONFIG_FILE"])
+client_id = os.environ["CLIENT_ID"]
+email = os.environ["CLIENT_EMAIL"]
+expected_port = int(os.environ["EXPECTED_PORT"])
+backup = path.with_suffix(path.suffix + ".bak-issuer")
+
+data = json.loads(path.read_text(encoding="utf-8"))
+inbounds = data.setdefault("inbounds", [])
+
+target = None
+for inbound in inbounds:
+    if int(inbound.get("port") or 0) == expected_port:
+        target = inbound
+        break
+if target is None:
+    for inbound in inbounds:
+        if str(inbound.get("protocol", "")).lower() == "vless":
+            target = inbound
+            break
+if target is None:
+    raise SystemExit(f"No VLESS inbound found in {{path}}")
+
+settings = target.setdefault("settings", {{}})
+clients = settings.setdefault("clients", [])
+client = {{"id": client_id, "email": email, "flow": "xtls-rprx-vision"}}
+for idx, existing in enumerate(clients):
+    if existing.get("id") == client_id:
+        clients[idx] = {{**existing, **client}}
+        break
+else:
+    clients.append(client)
+
+shutil.copy2(path, backup)
+fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", dir=str(path.parent))
+with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+    json.dump(data, tmp, ensure_ascii=False, indent=2)
+    tmp.write("\n")
+os.replace(tmp_name, path)
+PY
+
+chmod 755 "$(dirname "$CONFIG_FILE")"
+chmod 644 "$CONFIG_FILE"
+xray run -test -config "$CONFIG_FILE" >/tmp/xray-issuer-test.log 2>&1 || {{
+  cat /tmp/xray-issuer-test.log >&2 || true
+  if [ -f "$CONFIG_FILE.bak-issuer" ]; then
+    cp "$CONFIG_FILE.bak-issuer" "$CONFIG_FILE"
+    chmod 644 "$CONFIG_FILE"
+  fi
+  exit 1
+}}
+if [ -d /var/log/xray ]; then
+  chmod 755 /var/log/xray || true
+  find /var/log/xray -maxdepth 1 -type f -name '*.log' -exec chmod 664 {{}} + || true
+fi
+{_xray_service_restart_script()}
+echo OK
+""".strip()
+
+    out = ssh_cmd(vps, f"bash -lc {shlex.quote(remote_script)}")
     if "OK" not in out:
-        raise RuntimeError(f"xray-bot failed: {out[:2000]}")
-
-    restart_xray_reality(vps)
+        raise RuntimeError(f"xray update failed: {out[:2000]}")
 
     endpoint = vps["endpoint"]
-    port = vps.get("reality_port") or vps.get("xray_port") or 8443
     public_key = vps.get("reality_public_key")
     sni = vps.get("reality_sni") or "www.cloudflare.com"
     short_id = vps.get("reality_short_id") or ""
@@ -490,17 +603,71 @@ def create_xray_client(vps: dict, name: str) -> dict:
         "client_id": client_id,
     }
 
-
 def revoke_xray_client(vps: dict, client_id: Optional[str]) -> None:
     if not client_id:
         raise RuntimeError("Missing XRay client id")
 
-    cmd = (
-        f"(/usr/local/bin/xray-bot delete {client_id})"
-        f" || (/usr/local/bin/xray-bot remove {client_id})"
-    )
-    ssh_cmd(vps, f"bash -lc {json.dumps(cmd)}")
-    restart_xray_reality(vps)
+    config_files = [XRAY_LEGACY_CONFIG] + [meta["config"] for meta in XRAY_DEVICE_CONFIG.values()]
+    quoted_files = " ".join(shlex.quote(path) for path in config_files)
+    remote_script = f"""
+set -euo pipefail
+CLIENT_ID={shlex.quote(client_id)}
+changed=0
+for CONFIG_FILE in {quoted_files}; do
+  [ -f "$CONFIG_FILE" ] || continue
+  export CONFIG_FILE CLIENT_ID
+  if python3 - <<'PY'
+import json
+import os
+import shutil
+import tempfile
+from pathlib import Path
+
+path = Path(os.environ["CONFIG_FILE"])
+client_id = os.environ["CLIENT_ID"]
+data = json.loads(path.read_text(encoding="utf-8"))
+removed = False
+for inbound in data.get("inbounds", []):
+    clients = inbound.get("settings", {{}}).get("clients")
+    if not isinstance(clients, list):
+        continue
+    kept = [client for client in clients if client.get("id") != client_id]
+    if len(kept) != len(clients):
+        clients[:] = kept
+        removed = True
+if not removed:
+    raise SystemExit(2)
+backup = path.with_suffix(path.suffix + ".bak-issuer")
+shutil.copy2(path, backup)
+fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", dir=str(path.parent))
+with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+    json.dump(data, tmp, ensure_ascii=False, indent=2)
+    tmp.write("\n")
+os.replace(tmp_name, path)
+PY
+  then
+    chmod 755 "$(dirname "$CONFIG_FILE")"
+    chmod 644 "$CONFIG_FILE"
+    xray run -test -config "$CONFIG_FILE" >/tmp/xray-issuer-test.log 2>&1 || {{
+      cat /tmp/xray-issuer-test.log >&2 || true
+      if [ -f "$CONFIG_FILE.bak-issuer" ]; then
+        cp "$CONFIG_FILE.bak-issuer" "$CONFIG_FILE"
+        chmod 644 "$CONFIG_FILE"
+      fi
+      exit 1
+    }}
+    changed=1
+  else
+    rc=$?
+    [ "$rc" -eq 2 ] || exit "$rc"
+  fi
+done
+if [ "$changed" -eq 1 ]; then
+  {_xray_service_restart_script()}
+fi
+echo OK
+""".strip()
+    ssh_cmd(vps, f"bash -lc {shlex.quote(remote_script)}")
 
 
 @app.get("/health")
@@ -537,7 +704,7 @@ def create_key(data: KeyRequest, authorization: Optional[str] = Header(default=N
                 "peer_ip": result.get("peer_ip"),
             }
 
-        result = create_xray_client(vps, name=name)
+        result = create_xray_client(vps, name=name, device=data.device)
         client_id = result.get("client_id") or result.get("uuid") or result.get("id")
         return {
             "payload": result["payload"],
