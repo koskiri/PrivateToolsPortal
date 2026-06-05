@@ -237,7 +237,7 @@
                     <span>Операционная система</span>
                     <select name="connection_device" data-connection-device required>
                         {% for card in connection_device_cards %}
-                            <option value="{{ card.device }}">{{ card.device }}</option>
+                            <option value="{{ card.value }}">{{ card.device }}</option>
                         {% endfor %}
                     </select>
                 </label>

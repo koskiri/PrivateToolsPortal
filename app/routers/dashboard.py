@@ -158,18 +158,21 @@ CONNECTION_DEVICES = ("Android", "iPhone", "Windows", "macOS")
 
 
 def _normalize_connection_device(device: str | None) -> str:
-    if not device:
-        return "android"
-    value = device.strip().lower().replace(" ", "")
+    raw_device = (device or "").strip()
+    value = raw_device.lower().replace(" ", "")
+    normalized = ""
     if value in {"android", "андроид"}:
-        return "android"
-    if value in {"windows", "win", "виндовс"}:
-        return "windows"
-    if value in {"iphone", "ios", "айфон"}:
-        return "iphone"
-    if value in {"macos", "macoc", "mac", "macosx", "мак", "макос"}:
-        return "macos"
-    return "android"
+        normalized = "android"
+    elif value in {"windows", "win", "виндовс"}:
+        normalized = "windows"
+    elif value in {"iphone", "ios", "айфон"}:
+        normalized = "iphone"
+    elif value in {"macos", "macoc", "mac", "macosx", "мак", "макос"}:
+        normalized = "macos"
+    else:
+        normalized = "android"
+        print(f"DEBUG create-key unknown connection_device={raw_device!r}; defaulting to android")
+    return normalized
 
 
 def _display_connection_device(device: str) -> str:
@@ -314,7 +317,11 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
     primary_invite_link = invite_history[0]["invite_link"] if invite_history else ""
 
     connection_devices = tuple(
-        {"device": device, "icon": device[0] if device != "iPhone" else "i"}
+        {
+            "device": device,
+            "value": _normalize_connection_device(device),
+            "icon": device[0] if device != "iPhone" else "i",
+        }
         for device in CONNECTION_DEVICES
     )
     vless_profiles_by_device: dict[str, list[dict]] = {device["device"]: [] for device in connection_devices}
@@ -340,6 +347,7 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         profiles = vless_profiles_by_device.get(device, [])
         connection_device_cards.append({
             "device": device,
+            "value": device_meta["value"],
             "icon": device_meta["icon"],
             "hint": "VLESS профиль для приложения VPN",
             "profiles": profiles,
@@ -885,6 +893,8 @@ async def dashboard_create_key(
         return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Неизвестный+тип+ключа", status_code=303)
 
     normalized_device = _normalize_connection_device(connection_device) if key_kind == "xray" else None
+    if key_kind == "xray":
+        print(f"DEBUG create-key connection_device={connection_device!r} normalized_device={normalized_device}")
 
     now = utcnow()
     with get_db_connection() as con:

@@ -204,7 +204,8 @@
         }
 
         function prepareConnectionTitle(form) {
-            const device = form.querySelector("[data-connection-device]")?.value || "Android";
+            const deviceSelect = form.querySelector("[data-connection-device]");
+            const device = deviceSelect?.selectedOptions?.[0]?.textContent.trim() || "Android";
             const label = form.querySelector("[data-connection-label]")?.value.trim() || "профиль";
             const title = form.querySelector("[data-connection-title]");
             if (!title) return;
@@ -361,9 +362,11 @@
                 const button = createForm.querySelector("button[type='submit']");
                 if (button) button.disabled = true;
                 try {
+                    const formData = new FormData(createForm);
+                    console.log("connection_device", formData.get("connection_device"));
                     const response = await fetch(createForm.action, {
                         method: "POST",
-                        body: new FormData(createForm),
+                        body: formData,
                         credentials: "same-origin",
                     });
                     if (!response.ok) throw new Error("create failed");
