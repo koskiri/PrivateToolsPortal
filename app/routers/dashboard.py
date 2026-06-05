@@ -156,6 +156,28 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
 
 CONNECTION_DEVICES = ("Android", "iPhone", "Windows", "macOS")
 
+
+def _normalize_connection_device(device: str | None) -> str:
+    value = (device or "").strip().lower().replace(" ", "")
+    if value in {"android", "андроид"}:
+        return "android"
+    if value in {"windows", "win", "виндовс"}:
+        return "windows"
+    if value in {"iphone", "ios", "айфон"}:
+        return "iphone"
+    if value in {"macos", "macoc", "mac", "macosx", "мак", "макос"}:
+        return "macos"
+    return "android"
+
+
+def _display_connection_device(device: str) -> str:
+    return {
+        "android": "Android",
+        "windows": "Windows",
+        "iphone": "iPhone",
+        "macos": "macOS",
+    }.get(device, "Android")
+
 def _device_from_key_title(title: str | None) -> str:
     value = (title or "").strip().lower()
     if value.startswith("android") or "android" in value:
@@ -848,6 +870,7 @@ async def dashboard_create_key(
     key_kind: str = Form(...),
     key_title: str = Form(""),
     return_to: str = Form(""),
+    connection_device: str = Form(""),
 ):
     user = get_current_user(request)
     if not user:
@@ -858,6 +881,18 @@ async def dashboard_create_key(
         key_kind = "xray"
     if key_kind not in {"awg", "xray"}:
         return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Неизвестный+тип+ключа", status_code=303)
+
+    normalized_device = _normalize_connection_device(connection_device) if key_kind == "xray" else None
+    if normalized_device == "iphone":
+        return RedirectResponse(
+            f"{_safe_new_ui_redirect(return_to)}?error={quote_plus('INCY для iPhone будет добавлен позже')}",
+            status_code=303,
+        )
+    if normalized_device == "macos":
+        return RedirectResponse(
+            f"{_safe_new_ui_redirect(return_to)}?error={quote_plus('INCY для macOS будет добавлен позже')}",
+            status_code=303,
+        )
 
     now = utcnow()
     with get_db_connection() as con:
@@ -883,13 +918,17 @@ async def dashboard_create_key(
         if stats["active_keys"] >= (stats["key_limit"] or 0):
             return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Достигнут+лимит+ключей+для+тарифа", status_code=303)
 
-        title = key_title.strip() or f"{'Amnezia WG' if key_kind == 'awg' else 'XRay'} ключ"
+        if key_kind == "xray" and normalized_device:
+            title = key_title.strip() or f"{_display_connection_device(normalized_device)} Xray ключ"
+        else:
+            title = key_title.strip() or f"{'Amnezia WG' if key_kind == 'awg' else 'XRay'} ключ"
         created_at = now.isoformat()
         try:
             payload, vps_id, peer_pub, peer_ip = create_vpn_key_on_vps(
                 kind=key_kind,
                 title=title,
                 telegram_id=user["telegram_id"],
+                device=normalized_device,
             )
         except RuntimeError as exc:
             return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error={quote_plus(str(exc))}", status_code=303)

@@ -229,14 +229,23 @@ def create_yookassa_payment(amount_rub: int, description: str, metadata: dict[st
         raise RuntimeError("YooKassa returned invalid payment response")
     return payment_id, confirmation_url
 
-def create_vpn_key_on_vps(kind: str, title: str, telegram_id: int) -> tuple[str, Optional[int], Optional[str], Optional[str]]:
+def create_vpn_key_on_vps(
+    kind: str,
+    title: str,
+    telegram_id: int,
+    device: Optional[str] = None,
+) -> tuple[str, Optional[int], Optional[str], Optional[str]]:
     issuer_url = os.getenv(VPS_ISSUER_URL_ENV, "").strip().rstrip("/")
     if not issuer_url:
         raise RuntimeError("Не настроен адрес сервиса выдачи ключей на VPS")
 
+    payload = {"kind": kind, "title": title, "telegram_id": telegram_id}
+    if device:
+        payload["device"] = device
+
     req = urllib_request.Request(
         f"{issuer_url}/keys",
-        data=json.dumps({"kind": kind, "title": title, "telegram_id": telegram_id}).encode("utf-8"),
+        data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
