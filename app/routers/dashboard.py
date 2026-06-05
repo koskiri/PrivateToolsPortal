@@ -158,7 +158,9 @@ CONNECTION_DEVICES = ("Android", "iPhone", "Windows", "macOS")
 
 
 def _normalize_connection_device(device: str | None) -> str:
-    value = (device or "").strip().lower().replace(" ", "")
+    if not device:
+        return "android"
+    value = device.strip().lower().replace(" ", "")
     if value in {"android", "андроид"}:
         return "android"
     if value in {"windows", "win", "виндовс"}:
@@ -883,16 +885,6 @@ async def dashboard_create_key(
         return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Неизвестный+тип+ключа", status_code=303)
 
     normalized_device = _normalize_connection_device(connection_device) if key_kind == "xray" else None
-    if normalized_device == "iphone":
-        return RedirectResponse(
-            f"{_safe_new_ui_redirect(return_to)}?error={quote_plus('INCY для iPhone будет добавлен позже')}",
-            status_code=303,
-        )
-    if normalized_device == "macos":
-        return RedirectResponse(
-            f"{_safe_new_ui_redirect(return_to)}?error={quote_plus('INCY для macOS будет добавлен позже')}",
-            status_code=303,
-        )
 
     now = utcnow()
     with get_db_connection() as con:
