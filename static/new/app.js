@@ -210,18 +210,10 @@
 
         function updateConnectionProtocolState(form) {
             if (!form) return;
-            const deviceSelect = form.querySelector("[data-connection-device]");
             const protocolField = form.querySelector("[data-connection-protocol-field]");
             const protocolSelect = form.querySelector("[data-connection-protocol]");
             const keyKind = form.querySelector("[data-connection-kind]");
-            const appleSelected = isAppleDevice(deviceSelect?.value);
-
-            if (protocolField) protocolField.hidden = appleSelected;
-            if (appleSelected) {
-                if (keyKind) keyKind.value = "xray";
-                if (protocolSelect) protocolSelect.value = "xray";
-                return;
-            }
+            if (protocolField) protocolField.hidden = false;
 
             if (keyKind) keyKind.value = protocolSelect?.value === "awg" ? "awg" : "xray";
         }
@@ -236,13 +228,8 @@
             const title = form.querySelector("[data-connection-title]");
             if (!title) return;
 
-            if (isAppleDevice(deviceSelect?.value)) {
-                title.value = `iPhone / macOS · Reality + WS · ${label}`;
-                return;
-            }
-
-            const protocolLabel = keyKind === "awg" || protocolSelect?.value === "awg" ? "WG" : "Reality";
-            title.value = `${device} · ${protocolLabel} · ${label}`;
+            const protocolLabel = keyKind === "awg" || protocolSelect?.value === "awg" ? "WireGuard" : "Reality";
+            title.value = `${isAppleDevice(deviceSelect?.value) ? "iPhone / macOS" : device} · ${protocolLabel} · ${label}`;
         }
         async function copyText(value) {
             if (!value) return false;

@@ -254,6 +254,10 @@ def _profile_title_from_key_title(title: str | None, device: str) -> str:
         "WG - ",
         "WG — ",
         "WG: ",
+        "WireGuard · ",
+        "WireGuard - ",
+        "WireGuard — ",
+        "WireGuard: ",
         "VLESS ",
         "Vless ",
         "vless ",
@@ -382,9 +386,7 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         if kind not in {"xray", "awg"}:
             continue
         device = _device_from_key_title(row["title"])
-        if kind == "awg" and device == APPLE_CONNECTION_LABEL:
-            continue
-        if kind == "awg" and device not in {"Android", "Windows"}:
+        if kind == "awg" and device not in {"Android", "Windows", APPLE_CONNECTION_LABEL}:
             device = "Android"
         profile = {
             "id": row["id"],
@@ -952,8 +954,6 @@ async def dashboard_create_key(
         return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Неизвестный+тип+ключа", status_code=303)
 
     normalized_device = _normalize_connection_device(connection_device)
-    if key_kind == "awg" and normalized_device == APPLE_CONNECTION_DEVICE:
-        return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=WG+доступен+только+для+Android+и+Windows", status_code=303)
     issuer_device = _issuer_connection_device(normalized_device)
 
     now = utcnow()
@@ -982,10 +982,8 @@ async def dashboard_create_key(
 
         if key_title.strip():
             title = key_title.strip()
-        elif normalized_device == APPLE_CONNECTION_DEVICE:
-            title = f"{APPLE_CONNECTION_LABEL} · Reality + WS · профиль"
         else:
-            protocol_label = "WG" if key_kind == "awg" else "Reality"
+            protocol_label = "WireGuard" if key_kind == "awg" else "Reality"
             title = f"{_display_connection_device(normalized_device)} · {protocol_label} · профиль"
         created_at = now.isoformat()
         try:
