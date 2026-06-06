@@ -375,6 +375,8 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         }
         for device in CONNECTION_DEVICES
     )
+    print("connection_devices =", connection_devices)
+    print("vless_profiles_by_device keys =", list(vless_profiles_by_device.keys()))
     
     vless_profiles_by_device: dict[str, list[dict]] = {device["device"]: [] for device in connection_devices}
     for row in key_rows:
