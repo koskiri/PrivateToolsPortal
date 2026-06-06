@@ -152,6 +152,7 @@
             modal.setAttribute("aria-hidden", "false");
             modal.style.display = "flex";
             document.body.classList.add("modal-open");
+            updateConnectionProtocolState(modal.querySelector("[data-profile-create-form]"));
             const labelInput = modal.querySelector("[data-connection-label]");
             modal.querySelector(".connection-modal__panel")?.focus();
             labelInput?.focus();
@@ -203,15 +204,45 @@
             modal.querySelector(".connection-modal__panel")?.focus();
         }
 
-        function prepareConnectionTitle(form) {
+        function isAppleDevice(value) {
+            return ["iphone_macos", "iphone", "macos", "apple"].includes(String(value || "").toLowerCase());
+        }
+
+        function updateConnectionProtocolState(form) {
+            if (!form) return;
             const deviceSelect = form.querySelector("[data-connection-device]");
+            const protocolField = form.querySelector("[data-connection-protocol-field]");
+            const protocolSelect = form.querySelector("[data-connection-protocol]");
+            const keyKind = form.querySelector("[data-connection-kind]");
+            const appleSelected = isAppleDevice(deviceSelect?.value);
+
+            if (protocolField) protocolField.hidden = appleSelected;
+            if (appleSelected) {
+                if (keyKind) keyKind.value = "xray";
+                if (protocolSelect) protocolSelect.value = "xray";
+                return;
+            }
+
+            if (keyKind) keyKind.value = protocolSelect?.value === "awg" ? "awg" : "xray";
+        }
+
+        function prepareConnectionTitle(form) {
+            updateConnectionProtocolState(form);
+            const deviceSelect = form.querySelector("[data-connection-device]");
+            const protocolSelect = form.querySelector("[data-connection-protocol]");
+            const keyKind = form.querySelector("[data-connection-kind]")?.value || "xray";
             const device = deviceSelect?.selectedOptions?.[0]?.textContent.trim() || "Android";
             const label = form.querySelector("[data-connection-label]")?.value.trim() || "профиль";
             const title = form.querySelector("[data-connection-title]");
             if (!title) return;
 
-            const normalizedLabel = label.toLowerCase().includes("vless") ? label : `VLESS ${label}`;
-            title.value = `${device} · ${normalizedLabel}`;
+            if (isAppleDevice(deviceSelect?.value)) {
+                title.value = `iPhone / macOS · Reality + WS · ${label}`;
+                return;
+            }
+
+            const protocolLabel = keyKind === "awg" || protocolSelect?.value === "awg" ? "WG" : "Reality";
+            title.value = `${device} · ${protocolLabel} · ${label}`;
         }
         async function copyText(value) {
             if (!value) return false;
@@ -251,7 +282,21 @@
             closeProfileCreateModal();
             currentConnections.replaceWith(nextConnections);
             bindProfileCreateButton();
+            bindConnectionProtocolControls();
             document.getElementById("connections")?.scrollIntoView({ block: "start" });
+        }
+
+        function bindConnectionProtocolControls() {
+            document.querySelectorAll("[data-profile-create-form]").forEach((form) => {
+                if (form.dataset.connectionProtocolBound === "true") {
+                    updateConnectionProtocolState(form);
+                    return;
+                }
+                form.dataset.connectionProtocolBound = "true";
+                form.querySelector("[data-connection-device]")?.addEventListener("change", () => updateConnectionProtocolState(form));
+                form.querySelector("[data-connection-protocol]")?.addEventListener("change", () => updateConnectionProtocolState(form));
+                updateConnectionProtocolState(form);
+            });
         }
 
 
@@ -363,7 +408,6 @@
                 if (button) button.disabled = true;
                 try {
                     const formData = new FormData(createForm);
-                    console.log("connection_device", formData.get("connection_device"));
                     const response = await fetch(createForm.action, {
                         method: "POST",
                         body: formData,
@@ -401,6 +445,7 @@
         });
 
         bindProfileCreateButton();
+        bindConnectionProtocolControls();
 
         document.querySelectorAll("[data-copy-target]").forEach((button) => {
             button.addEventListener("click", async () => {

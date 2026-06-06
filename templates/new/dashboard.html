@@ -186,12 +186,13 @@
                 {% if card.profiles %}
                     <div class="connections-grid profile-grid" aria-label="Профили {{ card.device }}">
                         {% for profile in card.profiles %}
-                            <article class="connection-profile profile-card ready" data-connection-card data-connection-link="{{ profile.link|e }}" data-connection-name="{{ profile.title|e }}" data-connection-device="{{ profile.device|e }}" data-connection-qr-url="{{ profile.qr_url|e }}">
+                            <article class="connection-profile profile-card ready" data-connection-card data-connection-link="{{ profile.link|e }}" data-connection-name="{{ profile.title|e }}" data-connection-device="{{ profile.device|e }}" data-connection-kind="{{ profile.kind|e }}" data-connection-qr-url="{{ profile.qr_url|e }}">
                                 <div class="connection-profile__top">
                                     <span class="connection-device-icon" aria-hidden="true">{{ card.icon }}</span>
                                     <span class="pill success">{{ profile.status }}</span>
                                 </div>
                                 <div class="connection-profile__copy">
+                                    <span class="connection-protocol-badge">{{ profile.protocol_label }}</span>
                                     <h3>{{ profile.title }}</h3>
                                     <p>Профиль подключения {{ card.device }}</p>
                                     <small>Создан: {{ profile.created_at }}</small>
@@ -230,15 +231,22 @@
                 <button class="icon-button instruction-modal__close" type="button" data-profile-create-close aria-label="Закрыть создание профиля">×</button>
             </div>
             <form class="connection-form modal-form" method="post" action="/dashboard/create-key" data-connection-form data-profile-create-form>
-                <input type="hidden" name="key_kind" value="xray" />
+                <input type="hidden" name="key_kind" value="xray" data-connection-kind />
                 <input type="hidden" name="return_to" value="/new-ui#connections" />
                 <input type="hidden" name="key_title" value="" data-connection-title />
                 <label>
-                    <span>Операционная система</span>
+                    <span>Устройство</span>
                     <select name="connection_device" data-connection-device required>
                         {% for card in connection_device_cards %}
                             <option value="{{ card.value }}">{{ card.device }}</option>
                         {% endfor %}
+                    </select>
+                </label>
+                <label class="connection-protocol-field" data-connection-protocol-field>
+                    <span>Протокол</span>
+                    <select data-connection-protocol>
+                        <option value="xray">Reality</option>
+                        <option value="awg">WG</option>
                     </select>
                 </label>
                 <label>

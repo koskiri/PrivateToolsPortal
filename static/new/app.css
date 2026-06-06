@@ -239,6 +239,9 @@ h3 { font-size: 18px; }
 .connection-form input, .connection-form select { min-height: 46px; width: 100%; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 14px; padding: 0 14px; }
 .connection-form input::placeholder { color: var(--muted); }
 
+.connection-protocol-field[hidden] { display: none !important; }
+.connection-protocol-badge { display: inline-flex; align-items: center; width: fit-content; min-height: 28px; margin-bottom: 12px; padding: 0 10px; color: var(--brand); background: rgba(37, 99, 235, 0.14); border: 1px solid rgba(37, 99, 235, 0.24); border-radius: 999px; font-size: 12px; font-weight: 900; letter-spacing: 0.01em; }
+
 .connections-grid, .profile-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; gap: 18px; margin-top: 14px; }
 .connection-profile, .profile-card { display: flex; min-width: 0; min-height: 360px; height: 100%; flex-direction: column; padding: 22px; border: 1px solid var(--border); border-radius: 20px; background: linear-gradient(180deg, rgba(37, 99, 235, 0.12), transparent 70%), var(--surface-muted); }
 .connection-profile__top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }

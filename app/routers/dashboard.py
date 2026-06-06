@@ -154,46 +154,75 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
         },
     )
 
-CONNECTION_DEVICES = ("Android", "iPhone", "Windows", "macOS")
+CONNECTION_DEVICES = ("Android", "Windows", "iPhone / macOS")
+APPLE_CONNECTION_DEVICE = "iphone_macos"
+APPLE_CONNECTION_LABEL = "iPhone / macOS"
 
 
 def _normalize_connection_device(device: str | None) -> str:
     raw_device = (device or "").strip()
-    value = raw_device.lower().replace(" ", "")
-    normalized = ""
+    value = raw_device.lower().replace(" ", "").replace("_", "").replace("/", "")
     if value in {"android", "андроид"}:
-        normalized = "android"
-    elif value in {"windows", "win", "виндовс"}:
-        normalized = "windows"
-    elif value in {"iphone", "ios", "айфон"}:
-        normalized = "iphone"
-    elif value in {"macos", "macoc", "mac", "macosx", "мак", "макос"}:
-        normalized = "macos"
-    else:
-        normalized = "android"
-        print(f"DEBUG create-key unknown connection_device={raw_device!r}; defaulting to android")
-    return normalized
+        return "android"
+    if value in {"windows", "win", "виндовс"}:
+        return "windows"
+    if value in {
+        "iphone",
+        "ios",
+        "айфон",
+        "macos",
+        "macoc",
+        "mac",
+        "macosx",
+        "мак",
+        "макос",
+        "apple",
+        "iphonemacos",
+        "iosmacos",
+    }:
+        return APPLE_CONNECTION_DEVICE
+    return "android"
+
+
+def _issuer_connection_device(device: str) -> str:
+    if device == APPLE_CONNECTION_DEVICE:
+        return "iphone"
+    return device
 
 
 def _display_connection_device(device: str) -> str:
     return {
         "android": "Android",
         "windows": "Windows",
-        "iphone": "iPhone",
-        "macos": "macOS",
+        APPLE_CONNECTION_DEVICE: APPLE_CONNECTION_LABEL,
+        "iphone": APPLE_CONNECTION_LABEL,
+        "macos": APPLE_CONNECTION_LABEL,
     }.get(device, "Android")
 
 def _device_from_key_title(title: str | None) -> str:
     value = (title or "").strip().lower()
     if value.startswith("android") or "android" in value:
         return "Android"
-    if value.startswith("iphone") or "ios" in value or "айфон" in value:
-        return "iPhone"
     if value.startswith("windows") or "win" in value:
         return "Windows"
-    if value.startswith("macos") or value.startswith("mac os") or "mac" in value:
-        return "macOS"
+    if (
+        value.startswith("iphone / macos")
+        or value.startswith("iphone")
+        or value.startswith("macos")
+        or value.startswith("mac os")
+        or "ios" in value
+        or "айфон" in value
+        or "mac" in value
+    ):
+        return APPLE_CONNECTION_LABEL
     return "Android"
+
+def _protocol_label_for_profile(kind: str | None, device: str) -> str:
+    if kind == "awg":
+        return "WG"
+    if device == APPLE_CONNECTION_LABEL:
+        return "Reality + WS"
+    return "Reality"
 
 def _profile_title_from_key_title(title: str | None, device: str) -> str:
     value = (title or "").strip()
@@ -201,14 +230,36 @@ def _profile_title_from_key_title(title: str | None, device: str) -> str:
         return "Профиль подключения"
 
     separators = (" · ", " - ", " — ", ": ")
-    for separator in separators:
-        prefix = f"{device}{separator}"
-        if value.lower().startswith(prefix.lower()):
-            value = value[len(prefix):].strip()
-            break
+    device_prefixes = (device, "iPhone", "macOS", "Android", "Windows")
+    for device_prefix in device_prefixes:
+        for separator in separators:
+            prefix = f"{device_prefix}{separator}"
+            if value.lower().startswith(prefix.lower()):
+                value = value[len(prefix):].strip()
+                break
+        else:
+            continue
+        break
 
-    for prefix in ("VLESS ", "Vless ", "vless "):
-        if value.startswith(prefix):
+    protocol_prefixes = (
+        "Reality + WS · ",
+        "Reality + WS - ",
+        "Reality + WS — ",
+        "Reality + WS: ",
+        "Reality · ",
+        "Reality - ",
+        "Reality — ",
+        "Reality: ",
+        "WG · ",
+        "WG - ",
+        "WG — ",
+        "WG: ",
+        "VLESS ",
+        "Vless ",
+        "vless ",
+    )
+    for prefix in protocol_prefixes:
+        if value.lower().startswith(prefix.lower()):
             value = value[len(prefix):].strip()
             break
 
@@ -320,19 +371,26 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         {
             "device": device,
             "value": _normalize_connection_device(device),
-            "icon": device[0] if device != "iPhone" else "i",
+            "icon": "i" if device == APPLE_CONNECTION_LABEL else device[0],
         }
         for device in CONNECTION_DEVICES
     )
     vless_profiles_by_device: dict[str, list[dict]] = {device["device"]: [] for device in connection_devices}
     for row in key_rows:
-        if row["kind"] != "xray":
+        kind = (row["kind"] or "").strip().lower()
+        if kind not in {"xray", "awg"}:
             continue
         device = _device_from_key_title(row["title"])
+        if kind == "awg" and device == APPLE_CONNECTION_LABEL:
+            continue
+        if kind == "awg" and device not in {"Android", "Windows"}:
+            device = "Android"
         profile = {
             "id": row["id"],
             "title": _profile_title_from_key_title(row["title"], device),
             "device": device,
+            "kind": kind,
+            "protocol_label": _protocol_label_for_profile(kind, device),
             "status": "Готово",
             "link": row["payload"] or "",
             "qr_url": f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data={quote_plus(row['payload'] or '')}",
@@ -892,9 +950,10 @@ async def dashboard_create_key(
     if key_kind not in {"awg", "xray"}:
         return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Неизвестный+тип+ключа", status_code=303)
 
-    normalized_device = _normalize_connection_device(connection_device) if key_kind == "xray" else None
-    if key_kind == "xray":
-        print(f"DEBUG create-key connection_device={connection_device!r} normalized_device={normalized_device}")
+    normalized_device = _normalize_connection_device(connection_device)
+    if key_kind == "awg" and normalized_device == APPLE_CONNECTION_DEVICE:
+        return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=WG+доступен+только+для+Android+и+Windows", status_code=303)
+    issuer_device = _issuer_connection_device(normalized_device)
 
     now = utcnow()
     with get_db_connection() as con:
@@ -920,17 +979,20 @@ async def dashboard_create_key(
         if stats["active_keys"] >= (stats["key_limit"] or 0):
             return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Достигнут+лимит+ключей+для+тарифа", status_code=303)
 
-        if key_kind == "xray" and normalized_device:
-            title = key_title.strip() or f"{_display_connection_device(normalized_device)} Xray ключ"
+        if key_title.strip():
+            title = key_title.strip()
+        elif normalized_device == APPLE_CONNECTION_DEVICE:
+            title = f"{APPLE_CONNECTION_LABEL} · Reality + WS · профиль"
         else:
-            title = key_title.strip() or f"{'Amnezia WG' if key_kind == 'awg' else 'XRay'} ключ"
+            protocol_label = "WG" if key_kind == "awg" else "Reality"
+            title = f"{_display_connection_device(normalized_device)} · {protocol_label} · профиль"
         created_at = now.isoformat()
         try:
             payload, vps_id, peer_pub, peer_ip = create_vpn_key_on_vps(
                 kind=key_kind,
                 title=title,
                 telegram_id=user["telegram_id"],
-                device=normalized_device,
+                device=issuer_device,
             )
         except RuntimeError as exc:
             return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error={quote_plus(str(exc))}", status_code=303)
