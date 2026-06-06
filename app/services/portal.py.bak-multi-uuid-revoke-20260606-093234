@@ -301,73 +301,69 @@ def _try_revoke_local_ws_key(client_id: Optional[str]) -> bool:
 
 
 def revoke_vpn_key_on_vps(kind: str, vps_id: Optional[int], peer_pub: Optional[str], peer_ip: Optional[str]) -> None:
-    # peer_pub может содержать несколько UUID через запятую:
-    # WS UUID, Reality UUID
-    peer_values = [x.strip() for x in (peer_pub or "").split(",") if x.strip()]
-
-    if not peer_values and not peer_ip:
+    # Legacy WS-ключи на VM-980621 могут быть без vps_id.
+    # Сначала пробуем удалить UUID из локального /usr/local/etc/xray/config.json.
+    if _try_revoke_local_ws_key(peer_pub):
         return
 
-    # 1) Локально удаляем WS UUID из /usr/local/etc/xray/config.json на VM-980621.
-    # Скрипт сам вернёт NOT_FOUND для Reality UUID, это нормально.
-    for client_id in peer_values:
-        _try_revoke_local_ws_key(client_id)
-
-    # 2) Дальше старая логика: удаляем Reality/AWG через issuer.
     issuer_url = os.getenv(VPS_ISSUER_URL_ENV, "").strip().rstrip("/")
     if not issuer_url:
+        # В некоторых окружениях портал работает без issuer-сервиса.
+        # Не блокируем удаление ключа в интерфейсе — просто пропускаем отзыв на VPS.
         return
     if vps_id is None:
+        # Legacy-ключи могли создаваться без привязки к серверу.
+        return
+    if not (peer_pub or peer_ip):
+        # Для части старых записей нет технических данных для отзыва.
         return
 
     issuer_token = os.getenv(VPS_ISSUER_TOKEN_ENV, "").strip()
+    payload = json.dumps(
+        {
+            "kind": kind,
+            "vps_id": vps_id,
+            "peer_pub": peer_pub,
+            "peer_ip": peer_ip,
+        }
+    ).encode("utf-8")
     endpoints = ("/keys/revoke", "/revoke")
-    last_error: Optional[Exception] = None
+    saw_not_found = False
 
-    # Для issuer отправляем каждый UUID отдельно.
-    # Если UUID уже не найден на конкретном сервере, issuer сам обработает это.
-    targets = peer_values or [peer_pub]
+    for endpoint in endpoints:
+        req = urllib_request.Request(
+            f"{issuer_url}{endpoint}",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        if issuer_token:
+            req.add_header("Authorization", f"Bearer {issuer_token}")
 
-    for client_id in targets:
-        payload = json.dumps(
-            {
-                "kind": kind,
-                "vps_id": vps_id,
-                "peer_pub": client_id,
-                "peer_ip": peer_ip,
-            }
-        ).encode("utf-8")
-
-        for endpoint in endpoints:
-            req = urllib_request.Request(
-                f"{issuer_url}{endpoint}",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            if issuer_token:
-                req.add_header("Authorization", f"Bearer {issuer_token}")
-
-            try:
-                with urllib_request.urlopen(req, timeout=15):
-                    last_error = None
-                    break
-            except urllib_error.HTTPError as exc:
-                last_error = exc
+        try:
+            with urllib_request.urlopen(req, timeout=15):
+                return
+        except urllib_error.HTTPError as exc:
+            # 404 может означать, что endpoint не существует на issuer.
+            # Пробуем fallback endpoint, но если оба вернули 404 —
+            # считаем отзыв неуспешным и не удаляем ключ только в БД.
+            if exc.code == 404:
+                saw_not_found = True
                 if endpoint != endpoints[-1]:
                     continue
-                # Если конкретный UUID не найден, не валим весь revoke:
-                # например WS удалился локально, а на Reality его нет.
-                if exc.code == 404:
-                    last_error = None
-                    break
-            except urllib_error.URLError as exc:
-                last_error = exc
-                if endpoint != endpoints[-1]:
-                    continue
+                break
+            if endpoint != endpoints[-1]:
+                continue
+            raise RuntimeError(f"VPS вернул ошибку {exc.code}") from exc
+        except urllib_error.URLError as exc:
+            raise RuntimeError("Не удалось подключиться к VPS для отзыва ключа") from exc
 
-    if last_error:
-        raise RuntimeError(f"Не удалось отозвать ключ на VPS: {last_error}")
+    if saw_not_found:
+        # Некоторые инсталляции issuer работают без endpoint отзыва ключей.
+        # В таком случае не блокируем удаление ключа в портале:
+        # запись будет помечена удаленной только в локальной БД.
+        return
+
 
 def deactivate_user_keys(con: sqlite3.Connection, telegram_id: int) -> tuple[int, int]:
     active_keys = con.execute(

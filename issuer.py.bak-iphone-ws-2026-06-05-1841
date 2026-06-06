@@ -491,26 +491,6 @@ def create_xray_client(vps: dict, name: str, device: Optional[str] = None) -> di
     port = int(device_meta["port"])
     safe_name = sanitize_name(name)
     client_id = str(uuid.uuid4())
-    if device_name == "iphone":
-        cmd = f"/usr/local/bin/xray-iphone-ws create {shlex.quote(safe_name)} {shlex.quote(client_id)}"
-        out = ssh_cmd(vps, f"bash -lc {shlex.quote(cmd)}")
-        if "OK" not in out:
-            raise RuntimeError(f"iphone ws update failed: {out[:2000]}")
-
-        payload = (
-            f"vless://{client_id}@onlyus-launcher.ru:443"
-            f"?type=ws"
-            f"&security=tls"
-            f"&encryption=none"
-            f"&path=%2Fws"
-            f"&host=onlyus-launcher.ru"
-            f"#{safe_name}"
-        )
-
-        return {
-            "payload": payload,
-            "client_id": client_id,
-        }
 
     remote_script = f"""
 set -euo pipefail
