@@ -2,19 +2,27 @@
 {% block title %}Главная — OnlyUs{% endblock %}
 {% block heading %}Главная{% endblock %}
 {% block content %}
+{% set safe_subscription = subscription|default({}) %}
+{% set subscription_active = safe_subscription.active|default(false, true) %}
+{% set subscription_days_left = safe_subscription.days_left|default(0, true) %}
+{% set subscription_active_until = safe_subscription.active_until|default('—', true) %}
+{% set subscription_title = safe_subscription.title|default('Подписка недоступна', true) %}
+{% set safe_connections_active = connections_active|default(0, true)|int %}
+{% set safe_connections_limit = connections_limit|default(0, true)|int %}
+{% set profile_creation_disabled = safe_connections_limit == 0 or safe_connections_active >= safe_connections_limit %}
 <section class="grid two-columns">
     <article class="card hero-card">
         <div class="card-head">
             <div>
                 <p class="eyebrow">Подписка</p>
-                <h2>{{ 'Подписка активна' if subscription.active else 'Подписка неактивна' }}</h2>
+                <h2>{{ 'Подписка активна' if subscription_active else 'Подписка неактивна' }}</h2>
             </div>
-            <span class="pill {{ 'success' if subscription.active else 'muted' }}">{{ 'Активна' if subscription.active else 'Неактивна' }}</span>
+            <span class="pill {{ 'success' if subscription_active else 'muted' }}">{{ 'Активна' if subscription_active else 'Неактивна' }}</span>
         </div>
         <div class="metric-row">
             <div><span>Роль</span><strong>{{ role_label }}</strong></div>
-            <div><span>Осталось дней</span><strong>{{ subscription.days_left }}</strong></div>
-            <div><span>Действует до</span><strong>{{ subscription.active_until }}</strong></div>
+            <div><span>Осталось дней</span><strong>{{ subscription_days_left }}</strong></div>
+            <div><span>Действует до</span><strong>{{ subscription_active_until }}</strong></div>
         </div>
         <form method="post" action="/dashboard/subscription">
             <input type="hidden" name="action" value="renew" />
@@ -30,7 +38,7 @@
             <a class="button primary" href="/new-ui/invites">Управление приглашениями</a>
         {% else %}
             <p>Обычный аккаунт OnlyUs. Спонсоры могут делиться приглашениями с близкими.</p>
-            <button class="button secondary" type="button" disabled>Стать спонсором · скоро</button>
+            <button class="button secondary" type="button" disabled aria-disabled="true">Стать спонсором · скоро</button>
         {% endif %}
     </article>
 </section>
@@ -166,11 +174,11 @@
             <h2 id="connections-title">Профили подключения</h2>
             <p class="section-subtitle">Создавайте отдельные профили для своих устройств. Технический ключ скрыт — используйте ссылку, QR-код или скачайте конфиг.</p>
         </div>
-        <span class="instruction-badge">{{ connections_active }} / {{ connections_limit }} профилей</span>
+        <span class="instruction-badge">{{ safe_connections_active }} / {{ safe_connections_limit }} профилей</span>
     </div>
 
     <div class="connection-toolbar">
-        <button class="button primary create-profile-button" id="open-create-profile-modal" type="button">+ Создать профиль</button>
+        <button class="button primary create-profile-button" id="open-create-profile-modal" type="button"{% if profile_creation_disabled %} disabled aria-disabled="true"{% else %} aria-disabled="false"{% endif %}>+ Создать профиль</button>
     </div>
 
     <div class="connection-device-groups os-sections" aria-label="Профили подключения по устройствам">
@@ -199,12 +207,12 @@
                                 </div>
 
                                 <div class="connection-profile__actions" aria-label="Действия с профилем {{ profile.title }}">
-                                    <button class="button secondary" type="button" data-connection-copy{% if not profile.link %} disabled{% endif %}>{{ 'Скопировать ссылку' if profile.link else 'Ссылка недоступна' }}</button>
-                                    <button class="button secondary" type="button" data-connection-qr-open{% if not profile.qr_url %} disabled{% endif %}>{{ 'Показать QR' if profile.qr_url else 'QR недоступен' }}</button>
+                                    <button class="button secondary" type="button" data-connection-copy{% if not profile.link %} disabled aria-disabled="true"{% else %} aria-disabled="false"{% endif %}>{{ 'Скопировать ссылку' if profile.link else 'Ссылка недоступна' }}</button>
+                                    <button class="button secondary" type="button" data-connection-qr-open{% if not profile.link %} disabled aria-disabled="true"{% else %} aria-disabled="false"{% endif %}>{{ 'Показать QR' if profile.link else 'QR недоступен' }}</button>
                                     {% if profile.download_url %}
                                         <a class="button ghost" href="{{ profile.download_url }}" download data-connection-download>Скачать конфиг</a>
                                     {% else %}
-                                        <button class="button ghost" type="button" data-connection-download disabled>Скачать конфиг</button>
+                                        <button class="button ghost" type="button" data-connection-download disabled aria-disabled="true">Скачать конфиг</button>
                                     {% endif %}
                                     <form method="post" action="{{ profile.delete_url }}" data-connection-delete-form>
                                         <input type="hidden" name="return_to" value="/new-ui#connections" />
@@ -282,8 +290,8 @@
     <article class="card">
         <p class="eyebrow">Быстрые действия</p>
         <div class="action-list">
-            <button class="action-button" type="button" disabled><span>Показать QR</span><small>Скоро</small></button>
-            <button class="action-button" type="button" disabled><span>Информация о подписке</span><small>{{ subscription.title }}</small></button>
+            <button class="action-button" type="button" disabled aria-disabled="true"><span>Показать QR</span><small>Скоро</small></button>
+            <button class="action-button" type="button" disabled aria-disabled="true"><span>Информация о подписке</span><small>{{ subscription_title }}</small></button>
         </div>
     </article>
 

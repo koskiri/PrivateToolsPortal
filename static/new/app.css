@@ -438,10 +438,24 @@ th { color: var(--muted); font-size: 13px; }
     margin-bottom: 18px !important;
 }
 
-.profile-grid {
-    display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    gap: 20px !important;
+@media (min-width: 761px) {
+    .profile-grid {
+        display: grid !important;
+        gap: 20px !important;
+    }
+}
+
+@media (max-width: 760px) {
+    .profile-grid {
+        display: flex !important;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+    }
+    .profile-card {
+        flex: 0 0 min(300px, 84vw);
+        min-width: min(300px, 84vw);
+        scroll-snap-align: start;
+    }
 }
 
 .empty-state {

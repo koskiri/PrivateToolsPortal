@@ -63,6 +63,63 @@
                 || getProfileCreateModal()?.classList.contains("open"),
             );
         }
+        function getModalPanel(modal) {
+            return modal?.querySelector(".instruction-modal__panel, .connection-modal__panel") || null;
+        }
+
+        function getFocusableElements(container) {
+            if (!container) return [];
+            const selector = [
+                "a[href]",
+                "button:not([disabled])",
+                "input:not([disabled])",
+                "select:not([disabled])",
+                "textarea:not([disabled])",
+                "[tabindex]:not([tabindex='-1'])",
+            ].join(",");
+            return Array.from(container.querySelectorAll(selector)).filter((element) => {
+                if (element.getAttribute("aria-disabled") === "true") return false;
+                return Boolean(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
+            });
+        }
+
+        function getActiveModalPanel() {
+            return getModalPanel(getConnectionModal()?.classList.contains("open") ? getConnectionModal() : null)
+                || getModalPanel(getProfileCreateModal()?.classList.contains("open") ? getProfileCreateModal() : null)
+                || getModalPanel(getOpenInstructionModal());
+        }
+
+        function focusSafely(element) {
+            if (!element || !document.contains(element)) return false;
+            if (element.matches?.(":disabled, [aria-disabled='true']")) return false;
+            element.focus();
+            return true;
+        }
+
+        function focusSection(section) {
+            if (!section || !document.contains(section)) return false;
+            const hadTabindex = section.hasAttribute("tabindex");
+            if (!hadTabindex) section.setAttribute("tabindex", "-1");
+            section.focus({ preventScroll: true });
+            if (!hadTabindex) {
+                section.addEventListener("blur", () => section.removeAttribute("tabindex"), { once: true });
+            }
+            return true;
+        }
+
+        function resetProfileCreateForm(form) {
+            if (!form) return;
+            form.reset();
+            const keyKind = form.querySelector("[data-connection-kind]");
+            const title = form.querySelector("[data-connection-title]");
+            const protocolSelect = form.querySelector("[data-connection-protocol]");
+            const labelInput = form.querySelector("[data-connection-label]");
+            if (keyKind) keyKind.value = "xray";
+            if (title) title.value = "";
+            if (protocolSelect) protocolSelect.value = "xray";
+            if (labelInput) labelInput.value = "";
+            updateConnectionProtocolState(form);
+        }
         function closeProfileCreateModal() {
             const modal = getProfileCreateModal();
             if (!modal?.classList.contains("open")) return;
@@ -70,9 +127,9 @@
             modal.setAttribute("aria-hidden", "true");
             modal.style.display = "none";
             modal.setAttribute("hidden", "");
-            modal.querySelector("[data-profile-create-form]")?.reset();
+            resetProfileCreateForm(modal.querySelector("[data-profile-create-form]"));
             if (!hasOpenModal()) document.body.classList.remove("modal-open");
-            activeProfileCreateTrigger?.focus();
+            focusSafely(activeProfileCreateTrigger);
             activeProfileCreateTrigger = null;
         }
 
@@ -83,8 +140,12 @@
             modal.setAttribute("aria-hidden", "true");
             const qrFrame = modal.querySelector("[data-connection-modal-qr]");
             if (qrFrame) qrFrame.innerHTML = "";
+            const title = modal.querySelector("[data-connection-modal-title]");
+            const device = modal.querySelector("[data-connection-modal-device]");
+            if (title) title.textContent = "QR-код";
+            if (device) device.textContent = "Подключение";
             if (!hasOpenModal()) document.body.classList.remove("modal-open");
-            activeConnectionTrigger?.focus();
+            focusSafely(activeConnectionTrigger);
             activeConnectionTrigger = null;
         }
 
@@ -94,7 +155,7 @@
             modal.classList.remove("open");
             modal.setAttribute("aria-hidden", "true");
             if (!hasOpenModal()) document.body.classList.remove("modal-open");
-            activeInstructionTrigger?.focus();
+            focusSafely(activeInstructionTrigger);
             activeInstructionTrigger = null;
         }
 
@@ -109,7 +170,8 @@
             modal.setAttribute("aria-hidden", "false");
             modal.style.display = "flex";
             document.body.classList.add("modal-open");
-            updateConnectionProtocolState(modal.querySelector("[data-profile-create-form]"));
+            const form = modal.querySelector("[data-profile-create-form]");
+            resetProfileCreateForm(form);
             const labelInput = modal.querySelector("[data-connection-label]");
             modal.querySelector(".connection-modal__panel")?.focus();
             labelInput?.focus();
@@ -139,7 +201,13 @@
             const title = card.dataset.connectionName || "Подключение";
             const device = card.dataset.connectionDevice || "Подключение";
             const qrTarget = modal.querySelector("[data-connection-modal-qr]");
+            const connectionLink = card.dataset.connectionLink || "";
             const qrUrl = card.dataset.connectionQrUrl || "";
+            if (!connectionLink || !qrUrl) {
+                flashButtonLabel(trigger, !connectionLink ? "Ссылка недоступна" : "QR недоступен");
+                activeConnectionTrigger = null;
+                return;
+            }
 
             modal.querySelector("[data-connection-modal-title]").textContent = title;
             modal.querySelector("[data-connection-modal-device]").textContent = device;
@@ -239,6 +307,10 @@
             bindProfileCreateButton();
             bindConnectionProtocolControls();
             document.getElementById("connections")?.scrollIntoView({ block: "start" });
+            const updatedConnections = document.getElementById("connections");
+            updatedConnections?.scrollIntoView({ block: "start" });
+            const createButton = updatedConnections?.querySelector("#open-create-profile-modal");
+            focusSection(updatedConnections) || focusSafely(createButton) || focusSection(currentConnections);
         }
 
         function bindConnectionProtocolControls() {
@@ -318,6 +390,29 @@
                 closeInstructionModal();
                 closeConnectionModal();
                 closeProfileCreateModal();
+                return;
+            }
+            if (event.key === "Tab") {
+                const panel = getActiveModalPanel();
+                if (!panel) return;
+                const focusable = getFocusableElements(panel);
+                if (!focusable.length) {
+                    event.preventDefault();
+                    panel.focus();
+                    return;
+                }
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (!panel.contains(document.activeElement)) {
+                    event.preventDefault();
+                    (event.shiftKey ? last : first).focus();
+                } else if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
             }
         });
 
@@ -347,8 +442,10 @@
             const qrButton = event.target.closest("[data-connection-qr-open]");
             if (qrButton) {
                 const card = qrButton.closest("[data-connection-card]");
-                if (!card?.dataset.connectionQrUrl) {
-                    flashButtonLabel(qrButton, "QR недоступен");
+                const connectionLink = card?.dataset.connectionLink || "";
+                const qrUrl = card?.dataset.connectionQrUrl || "";
+                if (!connectionLink || !qrUrl) {
+                    flashButtonLabel(qrButton, !connectionLink ? "Ссылка недоступна" : "QR недоступен");
                     return;
                 }
                 openConnectionModal(card, qrButton);
