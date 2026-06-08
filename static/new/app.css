@@ -121,6 +121,20 @@ a { color: inherit; }
 .sidebar-card strong, .sidebar-card small { display: block; }
 .sidebar-card small { margin-top: 6px; color: var(--muted); }
 
+.sidebar-support-card {
+    display: grid;
+    gap: 10px;
+    margin-top: 20px;
+    padding: 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+.sidebar-support-card strong, .sidebar-support-card small { display: block; }
+.sidebar-support-card small { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.sidebar-support-card__button { width: 100%; margin-top: 4px; }
+
 .mobile-topbar { display: none; }
 .main-content { width: 100%; min-width: 0; }
 .content-container { width: 100%; max-width: 1400px; margin: 0 auto; padding: 34px; }
@@ -343,7 +357,7 @@ th { color: var(--muted); font-size: 13px; }
 @media (max-width: 1080px) {
     .app-shell { grid-template-columns: 92px minmax(0, 1fr); }
     .sidebar { padding: 18px; }
-    .brand-text, .nav-link span:last-child, .sidebar-card { display: none; }
+    .brand-text, .nav-link span:last-child, .sidebar-card, .sidebar-support-card { display: none; }
     .nav-link { justify-content: center; }
     .two-columns { grid-template-columns: 1fr; }
     .platform-scroll { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -352,9 +366,10 @@ th { color: var(--muted); font-size: 13px; }
 @media (max-width: 760px) {
     .app-shell { display: block; }
     .mobile-topbar { position: sticky; top: 0; z-index: 30; display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--bg); }
-    .sidebar { position: fixed; z-index: 50; inset: 0 auto 0 0; width: min(320px, 86vw); transform: translateX(-102%); transition: transform 180ms ease; }
+    .sidebar { position: fixed; z-index: 50; inset: 0 auto 0 0; width: min(320px, 86vw); overflow-y: auto; transform: translateX(-102%); transition: transform 180ms ease; }
     .sidebar.open { transform: translateX(0); }
-    .brand-text, .nav-link span:last-child, .sidebar-card { display: block; }
+    .brand-text, .nav-link span:last-child, .sidebar-card, .sidebar-support-card { display: block; }
+    .sidebar-support-card { display: grid; }
     .nav-link { justify-content: flex-start; }
     .menu-backdrop.open { display: block; position: fixed; z-index: 40; inset: 0; background: rgba(0, 0, 0, 0.46); }
     .content-container { width: 100%; max-width: none; padding: 16px; }
