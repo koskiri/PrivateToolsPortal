@@ -354,10 +354,38 @@ h3 { font-size: 18px; }
 .sponsor-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .sponsor-title-row h2 { margin: 0; }
 .sponsor-price { flex: 0 0 auto; min-height: 28px; margin-bottom: 0; padding: 0 10px; color: var(--brand); background: rgba(37, 99, 235, 0.14); border: 1px solid rgba(37, 99, 235, 0.26); font-size: 12px; }
-.sponsor-benefits { display: grid; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; color: var(--text); line-height: 1.4; }
-.sponsor-benefits li { position: relative; min-width: 0; padding-left: 24px; overflow-wrap: anywhere; }
-.sponsor-benefits li::before { content: "✓"; position: absolute; left: 0; top: 0; color: var(--brand); font-weight: 900; }
-.sponsor-benefits--compact { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); column-gap: 16px; row-gap: 8px; }
+.sponsor-benefits { display: grid; gap: 10px; margin: 16px 0 0; padding: 0; list-style: none; color: var(--text); line-height: 1.35; }
+.sponsor-benefits li {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    min-height: 46px;
+    height: 100%;
+    padding: 10px 12px;
+    overflow-wrap: anywhere;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    font-size: 14px;
+    font-weight: 800;
+}
+.sponsor-benefits li span:first-child {
+    display: grid;
+    flex: 0 0 22px;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    margin-right: 10px;
+    color: var(--brand);
+    background: rgba(37, 99, 235, 0.14);
+    border: 1px solid rgba(37, 99, 235, 0.26);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1;
+}
+.sponsor-benefits li span:last-child { min-width: 0; }
+.sponsor-benefits--compact { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(46px, 1fr); }
 .sponsor-action { align-self: end; justify-self: end; }
 .sponsor-button { width: auto; white-space: nowrap; }
 
