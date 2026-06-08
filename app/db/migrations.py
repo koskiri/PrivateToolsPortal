@@ -103,6 +103,24 @@ def ensure_billing_tables(con: sqlite3.Connection) -> None:
         )
         """
     )
+
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id INTEGER NOT NULL,
+            payment_id TEXT NOT NULL UNIQUE,
+            amount INTEGER NOT NULL,
+            plan TEXT,
+            key_limit INTEGER,
+            price_rub INTEGER,
+            title TEXT,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    
     con.execute(
         """
         CREATE TABLE IF NOT EXISTS payment_actions (

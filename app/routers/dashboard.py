@@ -1,18 +1,24 @@
 from __future__ import annotations
 
 import html
+import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.core.config import (
+    APP_BASE_URL_ENV,
     BASE_DIR,
     MAX_SUPPORT_MESSAGE_LEN,
     MAX_SUPPORT_SUBJECT_LEN,
+    SPONSOR_UPGRADE_ACTION,
+    SPONSOR_UPGRADE_AMOUNT_RUB,
+    SPONSOR_UPGRADE_DESCRIPTION,
     SUBSCRIPTION_RENEW_DAYS,
     TARIFF_PRESETS,
     USER_TARIFF_CHOICES,
@@ -311,6 +317,95 @@ def _format_new_ui_date(value: str | None) -> str:
     except ValueError:
         return value[:10]
 
+def _build_sponsor_payment_return_url(request: Request) -> str:
+    base_url = (os.getenv(APP_BASE_URL_ENV) or str(request.base_url)).rstrip("/")
+    query = urlencode({"return_to": "/new-ui?payment=sponsor"})
+    return f"{base_url}/dashboard/payment/return?{query}"
+
+
+def _safe_payment_return_to(return_to: str) -> str:
+    if return_to.startswith("/new-ui"):
+        return return_to
+    return "/dashboard"
+
+
+def _apply_payment_action(con: sqlite3.Connection, action_row: sqlite3.Row) -> str | None:
+    now = utcnow()
+    action = action_row["action"]
+
+    if action == "renew":
+        subscription = con.execute(
+            "SELECT active_until FROM subscriptions WHERE telegram_id = ?",
+            (action_row["telegram_id"],),
+        ).fetchone()
+        if not subscription:
+            return "Подписка+не+найдена"
+        active_until = datetime.fromisoformat(subscription["active_until"])
+        base = active_until if active_until > now else now
+        new_active_until = base + timedelta(days=SUBSCRIPTION_RENEW_DAYS)
+        con.execute(
+            "UPDATE subscriptions SET active_until = ? WHERE telegram_id = ?",
+            (new_active_until.isoformat(), action_row["telegram_id"]),
+        )
+    elif action == "change_plan":
+        plan_key = action_row["target_plan_key"]
+        preset = TARIFF_PRESETS.get(plan_key)
+        if not preset:
+            return "Неизвестный+тариф+в+платеже"
+        current_subscription = con.execute(
+            "SELECT plan, price_rub, active_until FROM subscriptions WHERE telegram_id = ?",
+            (action_row["telegram_id"],),
+        ).fetchone()
+        if current_subscription and current_subscription["plan"] == preset["plan"]:
+            active_until = datetime.fromisoformat(current_subscription["active_until"])
+            base = active_until if active_until > now else now
+            new_active_until = base + timedelta(days=SUBSCRIPTION_RENEW_DAYS)
+        else:
+            _, _, wallet_credit_rub, new_active_until = build_plan_change_terms(
+                current_subscription,
+                int(preset["price_rub"]),
+                now,
+            )
+            if wallet_credit_rub > 0:
+                increase_wallet_balance(con, action_row["telegram_id"], wallet_credit_rub)
+        con.execute(
+            (
+                "INSERT INTO subscriptions (telegram_id, active_until, plan, key_limit, price_rub, title) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(telegram_id) DO UPDATE SET "
+                "active_until=excluded.active_until, "
+                "plan=excluded.plan, "
+                "key_limit=excluded.key_limit, "
+                "price_rub=excluded.price_rub, "
+                "title=excluded.title"
+            ),
+            (
+                action_row["telegram_id"],
+                new_active_until.isoformat(),
+                preset["plan"],
+                preset["key_limit"],
+                preset["price_rub"],
+                preset["title"],
+            ),
+        )
+    elif action == SPONSOR_UPGRADE_ACTION:
+        con.execute(
+            "UPDATE portal_users SET role = 'sponsor', updated_at = ? WHERE telegram_id = ?",
+            (now.isoformat(), action_row["telegram_id"]),
+        )
+    else:
+        return "Неизвестное+действие+платежа"
+
+    now_iso = now.isoformat()
+    con.execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (action_row["payment_id"],))
+    con.execute(
+        "UPDATE payment_actions SET status = 'applied', updated_at = ? WHERE payment_id = ?",
+        (now_iso, action_row["payment_id"]),
+    )
+    return None
+
+
+
 
 def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectResponse:
     user = get_current_user(request)
@@ -483,6 +578,67 @@ async def new_ui_profile(request: Request):
     if isinstance(context, RedirectResponse):
         return context
     return templates.TemplateResponse(request=request, name="new/profile.html", context=context)
+
+@router.post("/dashboard/sponsor-upgrade")
+async def dashboard_sponsor_upgrade(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if is_sponsor_role(user["role"] if "role" in user.keys() else None):
+        return RedirectResponse("/new-ui", status_code=303)
+    if not yookassa_enabled():
+        return RedirectResponse("/new-ui?error=ЮKassa+не+настроена,+обратитесь+к+администратору", status_code=303)
+
+    now_iso = utcnow().isoformat()
+    try:
+        payment_id, confirmation_url = create_yookassa_payment(
+            amount_rub=SPONSOR_UPGRADE_AMOUNT_RUB,
+            description=SPONSOR_UPGRADE_DESCRIPTION,
+            metadata={
+                "telegram_id": str(user["telegram_id"]),
+                "action": SPONSOR_UPGRADE_ACTION,
+            },
+            return_url=_build_sponsor_payment_return_url(request),
+        )
+    except RuntimeError:
+        return RedirectResponse("/new-ui?error=Не+удалось+создать+платеж+в+ЮKassa", status_code=303)
+
+    with get_db_connection() as con:
+        con.execute(
+            (
+                "INSERT INTO payments "
+                "(telegram_id, payment_id, amount, plan, key_limit, price_rub, title, status, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)"
+            ),
+            (
+                user["telegram_id"],
+                payment_id,
+                SPONSOR_UPGRADE_AMOUNT_RUB,
+                SPONSOR_UPGRADE_ACTION,
+                0,
+                SPONSOR_UPGRADE_AMOUNT_RUB,
+                SPONSOR_UPGRADE_DESCRIPTION,
+                now_iso,
+            ),
+        )
+        con.execute(
+            (
+                "INSERT INTO payment_actions "
+                "(payment_id, telegram_id, action, target_plan_key, amount_rub, status, created_at, updated_at) "
+                "VALUES (?, ?, ?, NULL, ?, 'pending', ?, ?)"
+            ),
+            (
+                payment_id,
+                user["telegram_id"],
+                SPONSOR_UPGRADE_ACTION,
+                SPONSOR_UPGRADE_AMOUNT_RUB,
+                now_iso,
+                now_iso,
+            ),
+        )
+        con.commit()
+
+    return RedirectResponse(confirmation_url, status_code=303)
 
 @router.post("/dashboard/referral-invite")
 async def dashboard_create_referral_invite(request: Request):
@@ -741,94 +897,20 @@ async def yookassa_webhook(request: Request):
             )
             con.commit()
             return {"ok": True}
-
-        now = utcnow()
-
-        if action_row["action"] == "renew":
-            subscription = con.execute(
-                "SELECT active_until FROM subscriptions WHERE telegram_id = ?",
-                (action_row["telegram_id"],),
-            ).fetchone()
-
-            if not subscription:
-                return {"ok": False}
-
-            active_until = datetime.fromisoformat(subscription["active_until"])
-            base = active_until if active_until > now else now
-            new_active_until = base + timedelta(days=SUBSCRIPTION_RENEW_DAYS)
-
-            con.execute(
-                "UPDATE subscriptions SET active_until = ? WHERE telegram_id = ?",
-                (new_active_until.isoformat(), action_row["telegram_id"]),
-            )
-
-        elif action_row["action"] == "change_plan":
-            plan_key = action_row["target_plan_key"]
-            preset = TARIFF_PRESETS.get(plan_key)
-
-            if not preset:
-                return {"ok": False}
-
-            current_subscription = con.execute(
-                "SELECT plan, price_rub, active_until FROM subscriptions WHERE telegram_id = ?",
-                (action_row["telegram_id"],),
-            ).fetchone()
-
-            if current_subscription and current_subscription["plan"] == preset["plan"]:
-                active_until = datetime.fromisoformat(current_subscription["active_until"])
-                base = active_until if active_until > now else now
-                new_active_until = base + timedelta(days=SUBSCRIPTION_RENEW_DAYS)
-            else:
-                _, _, wallet_credit_rub, new_active_until = build_plan_change_terms(
-                    current_subscription,
-                    int(preset["price_rub"]),
-                    now,
-                )
-                if wallet_credit_rub > 0:
-                    increase_wallet_balance(con, action_row["telegram_id"], wallet_credit_rub)
-
-            con.execute(
-                (
-                    "INSERT INTO subscriptions (telegram_id, active_until, plan, key_limit, price_rub, title) "
-                    "VALUES (?, ?, ?, ?, ?, ?) "
-                    "ON CONFLICT(telegram_id) DO UPDATE SET "
-                    "active_until=excluded.active_until, "
-                    "plan=excluded.plan, "
-                    "key_limit=excluded.key_limit, "
-                    "price_rub=excluded.price_rub, "
-                    "title=excluded.title"
-                ),
-                (
-                    action_row["telegram_id"],
-                    new_active_until.isoformat(),
-                    preset["plan"],
-                    preset["key_limit"],
-                    preset["price_rub"],
-                    preset["title"],
-                ),
-            )
-        else:
+        apply_error = _apply_payment_action(con, action_row)
+        if apply_error:
             return {"ok": False}
-
-        now_iso = now.isoformat()
-
-        con.execute(
-            "UPDATE payments SET status = 'succeeded' WHERE payment_id = ?",
-            (payment_id,),
-        )
-        con.execute(
-            "UPDATE payment_actions SET status = 'applied', updated_at = ? WHERE payment_id = ?",
-            (now_iso, payment_id),
-        )
         con.commit()
 
     return {"ok": True}
 
 @router.get("/dashboard/payment/return")
-async def dashboard_payment_return(request: Request, payment_id: str = ""):
+async def dashboard_payment_return(request: Request, payment_id: str = "", return_to: str = ""):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    redirect_to = _safe_payment_return_to(return_to)
+    redirect_sep = "&" if "?" in redirect_to else "?"
     if not payment_id:
         with get_db_connection() as con:
             pending_payment = con.execute(
@@ -843,7 +925,7 @@ async def dashboard_payment_return(request: Request, payment_id: str = ""):
             ).fetchone()
 
         if not pending_payment:
-            return RedirectResponse("/dashboard?error=Платеж+не+найден", status_code=303)
+            return RedirectResponse(f"{redirect_to}{redirect_sep}error=Платеж+не+найден", status_code=303)
 
         payment_id = pending_payment["payment_id"]
 
@@ -853,11 +935,11 @@ async def dashboard_payment_return(request: Request, payment_id: str = ""):
             (payment_id, user["telegram_id"]),
         ).fetchone()
         if not action_row:
-            return RedirectResponse("/dashboard?error=Платеж+уже+обработан+или+недоступен", status_code=303)
+            return RedirectResponse(f"{redirect_to}{redirect_sep}error=Платеж+уже+обработан+или+недоступен", status_code=303)
         try:
             payment_status = fetch_yookassa_payment_status(payment_id)
         except RuntimeError:
-            return RedirectResponse("/dashboard?error=Не+удалось+проверить+статус+платежа", status_code=303)
+            return RedirectResponse(f"{redirect_to}{redirect_sep}error=Не+удалось+проверить+статус+платежа", status_code=303)
 
         if payment_status != "succeeded":
             con.execute(
@@ -869,75 +951,13 @@ async def dashboard_payment_return(request: Request, payment_id: str = ""):
                 ("failed", utcnow().isoformat(), payment_id),
             )
             con.commit()
-            return RedirectResponse("/dashboard?error=Платеж+не+завершен", status_code=303)
+            return RedirectResponse(f"{redirect_to}{redirect_sep}error=Платеж+не+завершен", status_code=303)
 
-        now = utcnow()
-        if action_row["action"] == "renew":
-            subscription = con.execute(
-                "SELECT active_until FROM subscriptions WHERE telegram_id = ?",
-                (user["telegram_id"],),
-            ).fetchone()
-            if not subscription:
-                return RedirectResponse("/dashboard?error=Подписка+не+найдена", status_code=303)
-            active_until = datetime.fromisoformat(subscription["active_until"])
-            base = active_until if active_until > now else now
-            new_active_until = base + timedelta(days=SUBSCRIPTION_RENEW_DAYS)
-            con.execute(
-                "UPDATE subscriptions SET active_until = ? WHERE telegram_id = ?",
-                (new_active_until.isoformat(), user["telegram_id"]),
-            )
-        elif action_row["action"] == "change_plan":
-            plan_key = action_row["target_plan_key"]
-            preset = TARIFF_PRESETS.get(plan_key)
-            if not preset:
-                return RedirectResponse("/dashboard?error=Неизвестный+тариф+в+платеже", status_code=303)
-            current_subscription = con.execute(
-                "SELECT plan, price_rub, active_until FROM subscriptions WHERE telegram_id = ?",
-                (user["telegram_id"],),
-            ).fetchone()
-            if current_subscription and current_subscription["plan"] == preset["plan"]:
-                active_until = datetime.fromisoformat(current_subscription["active_until"])
-                base = active_until if active_until > now else now
-                new_active_until = base + timedelta(days=SUBSCRIPTION_RENEW_DAYS)
-            else:
-                _, _, wallet_credit_rub, new_active_until = build_plan_change_terms(
-                    current_subscription,
-                    int(preset["price_rub"]),
-                    now,
-                )
-                if wallet_credit_rub > 0:
-                    increase_wallet_balance(con, user["telegram_id"], wallet_credit_rub)
-            con.execute(
-                (
-                    "INSERT INTO subscriptions (telegram_id, active_until, plan, key_limit, price_rub, title) "
-                    "VALUES (?, ?, ?, ?, ?, ?) "
-                    "ON CONFLICT(telegram_id) DO UPDATE SET "
-                    "active_until=excluded.active_until, "
-                    "plan=excluded.plan, "
-                    "key_limit=excluded.key_limit, "
-                    "price_rub=excluded.price_rub, "
-                    "title=excluded.title"
-                ),
-                (
-                    user["telegram_id"],
-                    new_active_until.isoformat(),
-                    preset["plan"],
-                    preset["key_limit"],
-                    preset["price_rub"],
-                    preset["title"],
-                ),
-            )
-        else:
-            return RedirectResponse("/dashboard?error=Неизвестное+действие+платежа", status_code=303)
-
-        now_iso = now.isoformat()
-        con.execute("UPDATE payments SET status = 'succeeded' WHERE payment_id = ?", (payment_id,))
-        con.execute(
-            "UPDATE payment_actions SET status = 'applied', updated_at = ? WHERE payment_id = ?",
-            (now_iso, payment_id),
-        )
+        apply_error = _apply_payment_action(con, action_row)
+        if apply_error:
+            return RedirectResponse(f"{redirect_to}{redirect_sep}error={apply_error}", status_code=303)
         con.commit()
-    return RedirectResponse("/dashboard?success=Платеж+подтвержден,+изменения+применены", status_code=303)
+    return RedirectResponse(f"{redirect_to}{redirect_sep}success=Платеж+подтвержден,+изменения+применены", status_code=303)
 
 
 @router.post("/dashboard/create-key")

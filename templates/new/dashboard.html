@@ -54,9 +54,9 @@
                     <li><span aria-hidden="true">✓</span><span>Влияние на развитие сервиса</span></li>
                 </ul>
             </div>
-            <div class="sponsor-action">
-                <button class="button secondary sponsor-button" type="button" disabled aria-disabled="true">Стать спонсором</button>
-            </div>
+            <form class="sponsor-action" method="post" action="/dashboard/sponsor-upgrade">
+                <button class="button secondary sponsor-button" type="submit">Стать спонсором</button>
+            </form>
         {% endif %}
     </article>
 </section>

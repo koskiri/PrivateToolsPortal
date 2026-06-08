@@ -205,18 +205,23 @@ def yookassa_enabled() -> bool:
     return bool(os.getenv(YOOKASSA_SHOP_ID_ENV) and os.getenv(YOOKASSA_SECRET_KEY_ENV))
 
 
-def create_yookassa_payment(amount_rub: int, description: str, metadata: dict[str, str]) -> tuple[str, str]:
+def create_yookassa_payment(
+    amount_rub: int,
+    description: str,
+    metadata: dict[str, str],
+    return_url: str | None = None,
+) -> tuple[str, str]:
     shop_id = os.getenv(YOOKASSA_SHOP_ID_ENV)
     secret_key = os.getenv(YOOKASSA_SECRET_KEY_ENV)
     if not shop_id or not secret_key:
         raise RuntimeError("YooKassa credentials are not configured")
 
     auth_token = base64.b64encode(f"{shop_id}:{secret_key}".encode("utf-8")).decode("utf-8")
-    return_url = os.getenv(YOOKASSA_RETURN_URL_ENV) or "http://localhost:8000/dashboard/payment/return"
+    payment_return_url = return_url or os.getenv(YOOKASSA_RETURN_URL_ENV) or "http://localhost:8000/dashboard/payment/return"
     payload = {
         "amount": {"value": f"{amount_rub:.2f}", "currency": "RUB"},
         "capture": True,
-        "confirmation": {"type": "redirect", "return_url": return_url},
+        "confirmation": {"type": "redirect", "return_url": payment_return_url},
         "description": description[:128],
         "metadata": metadata,
     }
