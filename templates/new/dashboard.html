@@ -32,12 +32,21 @@
 
     <article class="card status-card">
         <p class="eyebrow">Статус аккаунта</p>
-        <h2>{{ role_label }}</h2>
         {% if is_sponsor %}
+            <h2>{{ role_label }}</h2>
             <p>У вас доступно приглашений: <strong>{{ invite_stats.available }}</strong>.</p>
             <a class="button primary" href="/new-ui/invites">Управление приглашениями</a>
         {% else %}
-            <p>Обычный аккаунт OnlyUs. Спонсоры могут делиться приглашениями с близкими.</p>
+            <h2>Стать спонсором</h2>
+            <p>Спонсорство открывает расширенные возможности OnlyUs и помогает быстрее развивать сервис.</p>
+            <p><strong>Единоразово 5 000 ₽</strong></p>
+            <div class="action-list" aria-label="Преимущества спонсорства">
+                <div class="action-button"><span>Возможность приглашать пользователей</span></div>
+                <div class="action-button"><span>Поддержка 24/7</span></div>
+                <div class="action-button"><span>Ранний доступ к новым VPN-протоколам и улучшениям</span></div>
+                <div class="action-button"><span>Приоритетный доступ к новым серверам и локациям</span></div>
+                <div class="action-button"><span>Возможность влиять на развитие сервиса через обратную связь</span></div>
+            </div>
             <button class="button secondary" type="button" disabled aria-disabled="true">Стать спонсором · скоро</button>
         {% endif %}
     </article>
