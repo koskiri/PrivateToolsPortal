@@ -10,8 +10,8 @@
 {% set safe_connections_active = connections_active|default(0, true)|int %}
 {% set safe_connections_limit = connections_limit|default(0, true)|int %}
 {% set profile_creation_disabled = safe_connections_limit == 0 or safe_connections_active >= safe_connections_limit %}
-<section class="grid two-columns">
-    <article class="card hero-card">
+<section class="grid dashboard-summary">
+    <article class="card hero-card subscription-card">
         <div class="card-head">
             <div>
                 <p class="eyebrow">Подписка</p>
@@ -30,23 +30,28 @@
         </form>
     </article>
 
-    <article class="card status-card">
-        <p class="eyebrow">Статус аккаунта</p>
+    <article class="card status-card {{ 'sponsor-status-card' if is_sponsor else 'sponsor-promo-card' }}">
         {% if is_sponsor %}
+            <p class="eyebrow">Статус аккаунта</p>
             <h2>{{ role_label }}</h2>
             <p>У вас доступно приглашений: <strong>{{ invite_stats.available }}</strong>.</p>
             <a class="button primary" href="/new-ui/invites">Управление приглашениями</a>
         {% else %}
-            <h2>Стать спонсором</h2>
-            <p>Спонсорство открывает расширенные возможности OnlyUs и помогает быстрее развивать сервис.</p>
-            <p class="sponsor-price"><strong>Единоразово 5 000 ₽</strong></p>
-            <ul class="sponsor-benefits" aria-label="Преимущества спонсорства">
-                <li>Приглашения для пользователей</li>
-                <li>Поддержка 24/7</li>
-                <li>Ранний доступ к новым VPN-протоколам</li>
-                <li>Приоритет к новым серверам и локациям</li>
-                <li>Возможность влиять на развитие сервиса</li>
-            </ul>
+            <div class="sponsor-promo-copy">
+                <div class="card-head sponsor-promo-head">
+                    <div>
+                        <p class="eyebrow">Статус аккаунта</p>
+                        <h2>Стать спонсором</h2>
+                    </div>
+                    <span class="pill sponsor-price">Единоразово 5 000 ₽</span>
+                </div>
+                <p>Спонсорство открывает расширенные возможности OnlyUs, даёт приглашения для пользователей и помогает быстрее развивать сервис.</p>
+                <ul class="sponsor-benefits sponsor-benefits--compact" aria-label="Преимущества спонсорства">
+                    <li>Приглашения для пользователей</li>
+                    <li>Приоритет к новым серверам</li>
+                    <li>Влияние на развитие сервиса</li>
+                </ul>
+            </div>
             <button class="button secondary sponsor-button" type="button" disabled aria-disabled="true">Стать спонсором · скоро</button>
         {% endif %}
     </article>
