@@ -20,6 +20,9 @@
         .ok { background: #dcfce7; color: #14532d; }
         .bad { background: #fee2e2; color: #7f1d1d; }
         button { border: none; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; color: #fff; background: #2563eb; }
+        .mini-form { margin: 6px 0 0; }
+        .mini-form button { padding: 7px 10px; font-size: 12px; }
+        .sponsor { background: #fef3c7; color: #92400e; }
     </style>
     <link rel="icon" type="image/png" href="/static/img/favicon.png">
 </head>
@@ -55,6 +58,7 @@
                                 <th>Ключи</th>
                                 <th>Баланс</th>
                                 <th>VK</th>
+                                <th>Роль</th>
                                 <th>Статус</th>
                                 <th></th>
                             </tr>
@@ -79,6 +83,19 @@
                                         {% endif %}
                                     </td>
                                     <td>
+                                        <span class="pill {{ 'sponsor' if user.role == 'sponsor' else 'ok' }}">{{ role_label(user.role) }}</span>
+                                        <form class="mini-form" method="post" action="/admin/users/{{ user.id }}/role">
+                                            <input type="hidden" name="return_to" value="admin" />
+                                            {% if user.role == 'sponsor' %}
+                                                <input type="hidden" name="role" value="user" />
+                                                <button type="submit" style="background:#4b5563;">Сделать пользователем</button>
+                                            {% else %}
+                                                <input type="hidden" name="role" value="sponsor" />
+                                                <button type="submit" style="background:#d97706;">Сделать спонсором</button>
+                                            {% endif %}
+                                        </form>
+                                    </td>
+                                    <td>
                                         {% if user.revoked_at %}
                                             <span class="pill bad">Отозван</span>
                                         {% else %}
@@ -88,7 +105,7 @@
                                     <td><a class="link" href="/admin/users/{{ user.id }}">Открыть профиль</a></td>
                                 </tr>
                             {% else %}
-                                <tr><td colspan="9">Пользователей пока нет.</td></tr>
+                                <tr><td colspan="10">Пользователей пока нет.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>

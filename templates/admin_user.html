@@ -21,6 +21,8 @@
         input, select { border: 1px solid #d1d5db; padding: 10px; margin-bottom: 8px; }
         button { border: none; padding: 10px 12px; font-weight: 700; color: #fff; background: #2563eb; cursor: pointer; }
         .danger { background: #b91c1c; }
+        .secondary { background: #4b5563; }
+        .sponsor-action { background: #d97706; }
         .muted { color: #6b7280; }
         .table-wrap { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 10px; }
         table { width: 100%; border-collapse: collapse; min-width: 660px; }
@@ -54,6 +56,7 @@
                     <div class="field"><div class="label">Логин</div><div class="value">{{ user.login }}</div></div>
                     <div class="field"><div class="label">Telegram ID</div><div class="value">{{ user.telegram_id or '-' }}</div></div>
                     <div class="field"><div class="label">Статус доступа</div><div class="value">{{ 'Отозван' if user.revoked_at else 'Активен' }}</div></div>
+                    <div class="field"><div class="label">Роль</div><div class="value">{{ role_label(user.role) }}</div></div>
                     <div class="field"><div class="label">Подписка</div><div class="value">{{ user.title or '-' }}</div></div>
                     <div class="field"><div class="label">Срок подписки</div><div class="value">{{ user.active_until or '-' }}</div></div>
                     <div class="field"><div class="label">Лимит ключей</div><div class="value">{{ user.key_limit or 0 }}</div></div>
@@ -106,6 +109,20 @@
                 </div>
 
                 <div class="grid" style="margin-top: 14px;">
+                    <div class="card" style="margin:0;">
+                        <h3 style="margin-top:0;">Роль пользователя</h3>
+                        <div class="muted" style="margin-bottom:8px;">Текущий статус: <strong>{{ role_label(user.role) }}</strong></div>
+                        <form method="post" action="/admin/users/{{ user.id }}/role">
+                            <input type="hidden" name="return_to" value="profile" />
+                            {% if user.role == 'sponsor' %}
+                                <input type="hidden" name="role" value="user" />
+                                <button class="secondary" type="submit">Сделать пользователем</button>
+                            {% else %}
+                                <input type="hidden" name="role" value="sponsor" />
+                                <button class="sponsor-action" type="submit">Сделать спонсором</button>
+                            {% endif %}
+                        </form>
+                    </div>
                     <div class="card" style="margin:0;">
                         <h3 style="margin-top:0;">Сменить тариф</h3>
                         <form method="post" action="/admin/users/{{ user.id }}/change-plan">

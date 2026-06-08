@@ -39,6 +39,22 @@ VK_SUBSCRIPTION_REMINDER_INTERVAL_SECONDS = 24 * 60 * 60
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
+USER_ROLES = {"user", "sponsor"}
+ROLE_LABELS = {"user": "Пользователь", "sponsor": "Спонсор"}
+
+
+def normalize_user_role(role: str | None) -> str:
+    normalized = (role or "user").strip().lower()
+    return normalized if normalized in USER_ROLES else "user"
+
+
+def get_user_role_label(role: str | None) -> str:
+    return ROLE_LABELS[normalize_user_role(role)]
+
+
+def is_sponsor_role(role: str | None) -> bool:
+    return normalize_user_role(role) == "sponsor"
+
 
 def is_invite_used(invite_row: sqlite3.Row | None) -> bool:
     if not invite_row:

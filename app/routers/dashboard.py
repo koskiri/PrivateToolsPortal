@@ -30,11 +30,13 @@ from app.services.portal import (
     decrease_wallet_balance,
     fetch_yookassa_payment_status,
     format_support_status,
+    get_user_role_label,
     get_or_create_wallet_balance,
     get_user_invite_stats,
     get_vk_bot_link,
     get_vk_link_by_portal_user,
     increase_wallet_balance,
+    is_sponsor_role,
     revoke_vpn_key_on_vps,
     unlink_vk_by_portal_user,
     utcnow,
@@ -115,6 +117,9 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
         for inv in invite_list
     ]
 
+    is_sponsor = is_sponsor_role(user["role"] if "role" in user.keys() else None)
+    role_label = get_user_role_label(user["role"] if "role" in user.keys() else None)
+
     support_messages_by_ticket: dict[int, list[sqlite3.Row]] = {}
     for msg in support_messages:
         support_messages_by_ticket.setdefault(int(msg["ticket_id"]), []).append(msg)
@@ -151,6 +156,8 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             "referral_invites": referral_invites,
             "referral_stats": referral_stats,
             "invite_limit_reached": int(referral_stats["available"] or 0) >= 10,
+            "role_label": role_label,
+            "is_sponsor": is_sponsor,
         },
     )
 
@@ -356,9 +363,8 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
     total_invites = int(referral_stats["total"] or 0)
     used_invites = int(referral_stats["used"] or 0)
     available_invites = int(referral_stats["available"] or 0)
-    # В текущей модели данных нет отдельного флага роли спонсора.
-    # Для изолированного тестового UI считаем спонсором пользователя, у которого уже есть приглашения.
-    is_sponsor = total_invites > 0 or available_invites > 0
+    is_sponsor = is_sponsor_role(user["role"] if "role" in user.keys() else None)
+    role_label = get_user_role_label(user["role"] if "role" in user.keys() else None)
 
     invite_history = [
         {
@@ -480,9 +486,8 @@ async def new_ui_profile(request: Request):
 
 @router.post("/dashboard/referral-invite")
 async def dashboard_create_referral_invite(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse("/login", status_code=303)
+    if not is_sponsor_role(user["role"] if "role" in user.keys() else None):
+        return RedirectResponse("/dashboard?error=Инвайт-ссылки+доступны+только+спонсорам", status_code=303)
 
     with get_db_connection() as con:
         stats = get_user_invite_stats(con, int(user["id"]))

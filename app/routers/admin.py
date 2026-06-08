@@ -27,7 +27,9 @@ from app.core.security import (
 from app.services.portal import (
     deactivate_user_keys,
     format_support_status,
+    get_user_role_label,
     increase_wallet_balance,
+    normalize_user_role,
     utcnow,
 )
 
@@ -112,7 +114,7 @@ async def admin_home_page(request: Request, error: str = "", success: str = ""):
     with get_db_connection() as con:
         users = con.execute(
             (
-                "SELECT u.id, u.login, u.telegram_id, u.created_at, u.revoked_at, "
+                "SELECT u.id, u.login, u.telegram_id, u.created_at, u.revoked_at, COALESCE(u.role, 'user') AS role, "
                 "s.title AS subscription_title, s.active_until, s.key_limit, "
                 "COALESCE(k.active_keys, 0) AS active_keys, "
                 "COALESCE(w.balance_rub, 0) AS balance_rub, "
@@ -132,7 +134,7 @@ async def admin_home_page(request: Request, error: str = "", success: str = ""):
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
-        context={"error": error, "success": success, "is_admin": True, "users": users},
+        context={"error": error, "success": success, "is_admin": True, "users": users, "role_label": get_user_role_label},
     )
 
 
@@ -156,7 +158,7 @@ async def admin_user_page(request: Request, user_id: int, error: str = "", succe
     with get_db_connection() as con:
         user = con.execute(
             (
-                "SELECT u.id, u.login, u.telegram_id, u.created_at, u.updated_at, u.revoked_at, "
+                "SELECT u.id, u.login, u.telegram_id, u.created_at, u.updated_at, u.revoked_at, COALESCE(u.role, 'user') AS role, "
                 "u.invited_by_user_id, inviter.login AS invited_by_login, "
                 "s.plan, s.title, s.price_rub, s.key_limit, s.active_until, "
                 "COALESCE(w.balance_rub, 0) AS wallet_balance, "
@@ -228,8 +230,33 @@ async def admin_user_page(request: Request, user_id: int, error: str = "", succe
             "invited_friends": invited_friends,
             "tariff_presets": TARIFF_PRESETS,
             "status_label": format_support_status,
+            "role_label": get_user_role_label,
         },
     )
+
+@router.post("/admin/users/{user_id}/role")
+async def admin_user_change_role(request: Request, user_id: int, role: str = Form(...), return_to: str = Form("profile")):
+    if not is_admin(request):
+        return admin_user_redirect(user_id, error="Нужна авторизация админа")
+
+    normalized_role = normalize_user_role(role)
+    if normalized_role != role.strip().lower():
+        return admin_user_redirect(user_id, error="Неизвестная роль пользователя")
+
+    now = utcnow().isoformat()
+    with get_db_connection() as con:
+        updated = con.execute(
+            "UPDATE portal_users SET role = ?, updated_at = ? WHERE id = ?",
+            (normalized_role, now, user_id),
+        ).rowcount
+        con.commit()
+    if not updated:
+        return RedirectResponse("/admin?error=Пользователь+не+найден", status_code=303)
+
+    success = f"Роль пользователя обновлена: {get_user_role_label(normalized_role)}"
+    if return_to == "admin":
+        return RedirectResponse(f"/admin?success={quote_plus(success)}", status_code=303)
+    return admin_user_redirect(user_id, success=success)
 
 
 @router.post("/admin/users/{user_id}/change-plan")
@@ -516,6 +543,7 @@ async def admin_support_page(request: Request, error: str = "", success: str = "
             "tickets": tickets,
             "messages_by_ticket": messages_by_ticket,
             "status_label": format_support_status,
+            "role_label": get_user_role_label,
         },
     )
 
