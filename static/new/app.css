@@ -330,6 +330,12 @@ h3 { font-size: 18px; }
     .profile-grid { grid-template-columns: minmax(280px, 1fr); }
 }
 
+.sponsor-price { margin-bottom: 0; }
+.sponsor-benefits { display: grid; gap: 10px; margin: 18px 0 22px; padding: 0; list-style: none; color: var(--text); line-height: 1.45; }
+.sponsor-benefits li { position: relative; min-width: 0; padding-left: 26px; overflow-wrap: anywhere; }
+.sponsor-benefits li::before { content: "✓"; position: absolute; left: 0; top: 0; color: var(--brand); font-weight: 900; }
+.sponsor-button { width: 100%; }
+
 .action-list { display: grid; gap: 12px; margin-top: 18px; }
 .action-button { display: flex; justify-content: space-between; align-items: center; gap: 14px; min-height: 58px; width: 100%; padding: 0 16px; color: var(--text); background: var(--surface-muted); border: 1px solid var(--border); border-radius: 18px; text-align: left; }
 .action-button span { font-weight: 800; }
