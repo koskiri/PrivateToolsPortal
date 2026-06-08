@@ -43,6 +43,49 @@ USER_ROLES = {"user", "sponsor"}
 ROLE_LABELS = {"user": "Пользователь", "sponsor": "Спонсор"}
 
 
+SPONSOR_ACCESS_DAYS = 365
+
+
+def parse_subscription_active_until(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def apply_sponsor_upgrade(con: sqlite3.Connection, telegram_id: int, now: datetime | None = None) -> bool:
+    now = now or utcnow()
+    now_iso = now.isoformat()
+    user = con.execute(
+        "SELECT role FROM portal_users WHERE telegram_id = ?",
+        (telegram_id,),
+    ).fetchone()
+    if not user or is_sponsor_role(user["role"] if "role" in user.keys() else None):
+        return False
+
+    con.execute(
+        "UPDATE portal_users SET role = 'sponsor', updated_at = ? WHERE telegram_id = ?",
+        (now_iso, telegram_id),
+    )
+
+    subscription = con.execute(
+        "SELECT active_until FROM subscriptions WHERE telegram_id = ?",
+        (telegram_id,),
+    ).fetchone()
+    active_until = parse_subscription_active_until(subscription["active_until"] if subscription else None)
+    base = active_until if active_until and active_until > now else now
+    new_active_until = base + timedelta(days=SPONSOR_ACCESS_DAYS)
+    con.execute(
+        "UPDATE subscriptions SET active_until = ? WHERE telegram_id = ?",
+        (new_active_until.isoformat(), telegram_id),
+    )
+    return True
+
 def normalize_user_role(role: str | None) -> str:
     normalized = (role or "user").strip().lower()
     return normalized if normalized in USER_ROLES else "user"

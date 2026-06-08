@@ -27,6 +27,7 @@ from app.core.db import get_db_connection
 from app.core.security import get_current_user
 from app.services.portal import (
     build_activate_link,
+    apply_sponsor_upgrade,
     build_plan_change_terms,
     create_referral_invite,
     create_vk_link_code,
@@ -389,10 +390,7 @@ def _apply_payment_action(con: sqlite3.Connection, action_row: sqlite3.Row) -> s
             ),
         )
     elif action == SPONSOR_UPGRADE_ACTION:
-        con.execute(
-            "UPDATE portal_users SET role = 'sponsor', updated_at = ? WHERE telegram_id = ?",
-            (now.isoformat(), action_row["telegram_id"]),
-        )
+        apply_sponsor_upgrade(con, action_row["telegram_id"], now)
     else:
         return "Неизвестное+действие+платежа"
 
