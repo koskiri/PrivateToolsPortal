@@ -18,13 +18,13 @@
                 <span class="brand-text">OnlyUs</span>
             </a>
             <nav class="nav" aria-label="Основное меню">
-                <a class="nav-link {% if active_page == 'dashboard' %}active{% endif %}" href="/new-ui">
+                <a class="nav-link {% if active_page == 'dashboard' %}active{% endif %}" href="/new-ui"{% if active_page == 'dashboard' %} aria-current="page"{% endif %}>
                     <span class="nav-icon">⌂</span><span>Главная</span>
                 </a>
-                <a class="nav-link {% if active_page == 'invites' %}active{% endif %}" href="/new-ui/invites">
+                <a class="nav-link {% if active_page == 'invites' %}active{% endif %}" href="/new-ui/invites"{% if active_page == 'invites' %} aria-current="page"{% endif %}>
                     <span class="nav-icon">✦</span><span>Приглашения</span>
                 </a>
-                <a class="nav-link {% if active_page == 'profile' %}active{% endif %}" href="/new-ui/profile">
+                <a class="nav-link {% if active_page == 'profile' %}active{% endif %}" href="/new-ui/profile"{% if active_page == 'profile' %} aria-current="page"{% endif %}>
                     <span class="nav-icon">◌</span><span>Профиль</span>
                 </a>
             </nav>
@@ -37,7 +37,7 @@
 
         <div class="mobile-topbar">
             <a class="brand compact" href="/new-ui"><span class="brand-mark">O</span><span>OnlyUs</span></a>
-            <button class="icon-button" type="button" data-menu-toggle aria-controls="sidebar" aria-expanded="false">☰</button>
+            <button class="icon-button" type="button" data-menu-toggle aria-label="Открыть меню" aria-controls="sidebar" aria-expanded="false">☰</button>
         </div>
 
         <main class="main-content">

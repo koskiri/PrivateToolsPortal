@@ -38,9 +38,9 @@
         <p class="eyebrow">Тема оформления</p>
         <h2>Внешний вид</h2>
         <div class="theme-options" aria-label="Выбор темы">
-            <button class="button ghost" type="button" data-theme-choice="light">Светлая</button>
-            <button class="button ghost" type="button" data-theme-choice="dark">Темная</button>
-            <button class="button ghost" type="button" data-theme-choice="system">Системная</button>
+            <button class="button ghost" type="button" data-theme-choice="light" aria-pressed="false">Светлая</button>
+            <button class="button ghost" type="button" data-theme-choice="dark" aria-pressed="false">Темная</button>
+            <button class="button ghost" type="button" data-theme-choice="system" aria-pressed="false">Системная</button>
         </div>
         <p class="muted-text">Выбор сохраняется в этом браузере.</p>
     </article>
@@ -50,7 +50,7 @@
     <p class="eyebrow">Поддержка</p>
     <h2>Нужна помощь?</h2>
     <div class="button-row">
-        <a class="button secondary" href="{{ telegram_support_link }}" aria-disabled="true">Telegram · скоро</a>
+        <a class="button secondary" aria-disabled="true" tabindex="-1">Telegram · скоро</a>
         <a class="button secondary" href="{{ vk_bot_link }}">VK</a>
     </div>
 </section>

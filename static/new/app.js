@@ -1,51 +1,4 @@
 (() => {
-    function closeProfileCreateModalFallback() {
-        const modal = document.getElementById("profile-create-modal");
-        if (!modal) {
-            console.warn("profile-create-modal not found");
-            return;
-        }
-
-        modal.classList.remove("open");
-        modal.setAttribute("aria-hidden", "true");
-        modal.style.display = "none";
-        modal.setAttribute("hidden", "");
-        document.body.classList.remove("modal-open");
-    }
-
-    document.addEventListener("click", function(event) {
-        const button = event.target.closest("#open-create-profile-modal");
-        if (!button) return;
-
-        event.preventDefault();
-        event.stopPropagation();
-
-        const modal = document.getElementById("profile-create-modal");
-        if (!modal) {
-            console.warn("profile-create-modal not found");
-            return;
-        }
-
-        modal.classList.add("open");
-        modal.removeAttribute("hidden");
-        modal.setAttribute("aria-hidden", "false");
-        modal.style.display = "flex";
-        document.body.classList.add("modal-open");
-    });
-
-    document.addEventListener("click", function(event) {
-        const modal = document.getElementById("profile-create-modal");
-        if (!modal) return;
-
-        const closeButton = event.target.closest("[data-profile-create-close]");
-        const isBackdrop = event.target === modal.querySelector(".connection-modal__backdrop");
-        if (!closeButton && !isBackdrop) return;
-
-        event.preventDefault();
-        event.stopPropagation();
-
-        closeProfileCreateModalFallback();
-    });
     document.addEventListener("DOMContentLoaded", () => {
         const root = document.documentElement;
         const storageKey = "onlyus-theme";
@@ -77,9 +30,16 @@
             return value === "light" ? "light" : "dark";
         }
 
+        function updateThemeChoices(value) {
+            document.querySelectorAll("[data-theme-choice]").forEach((button) => {
+                button.setAttribute("aria-pressed", String(button.dataset.themeChoice === value));
+            });
+        }
+
         function applyTheme(value) {
             root.dataset.theme = resolveTheme(value);
             if (themeSelect) themeSelect.value = value;
+            updateThemeChoices(value);
         }
 
         function setMenu(open) {
@@ -130,10 +90,7 @@
 
         function closeInstructionModal() {
             const modal = getOpenInstructionModal();
-            if (!modal) {
-                warnMissingElement("profile-create-modal", "Profile create modal #profile-create-modal was not found.");
-                return;
-            }
+            if (!modal) return;
             modal.classList.remove("open");
             modal.setAttribute("aria-hidden", "true");
             if (!hasOpenModal()) document.body.classList.remove("modal-open");
@@ -194,6 +151,8 @@
                     image.alt = `QR-код подключения ${title}`;
                     image.loading = "lazy";
                     qrTarget.append(image);
+                } else {
+                    qrTarget.textContent = "QR недоступен";
                 }
             }
 
@@ -228,14 +187,18 @@
             const title = form.querySelector("[data-connection-title]");
             if (!title) return;
 
-            const protocolLabel = keyKind === "awg" || protocolSelect?.value === "awg" ? "WireGuard" : "Reality";
+            const protocolLabel = keyKind === "awg" || protocolSelect?.value === "awg" ? "WireGuard" : "Reality + WS";
             title.value = `${isAppleDevice(deviceSelect?.value) ? "iPhone / macOS" : device} · ${protocolLabel} · ${label}`;
         }
         async function copyText(value) {
             if (!value) return false;
             if (navigator.clipboard?.writeText) {
-                await navigator.clipboard.writeText(value);
-                return true;
+                try {
+                    await navigator.clipboard.writeText(value);
+                    return true;
+                } catch (error) {
+                    // Fall through to the textarea fallback for insecure contexts or denied permissions.
+                }
             }
 
             const helper = document.createElement("textarea");
@@ -245,7 +208,12 @@
             helper.style.inset = "-1000px auto auto -1000px";
             document.body.append(helper);
             helper.select();
-            const copied = document.execCommand("copy");
+            let copied = false;
+            try {
+                copied = document.execCommand("copy");
+            } catch (error) {
+                copied = false;
+            }
             helper.remove();
             return copied;
         }
@@ -358,20 +326,32 @@
                 closeProfileCreateModal();
                 return;
             }
+            if (event.target.closest('[aria-disabled="true"]')) {
+                event.preventDefault();
+                return;
+            }
 
             const copyButton = event.target.closest("[data-connection-copy]");
             if (copyButton) {
                 const card = copyButton.closest("[data-connection-card]");
                 const value = card?.dataset.connectionLink || "";
-                if (!value) return;
-                await copyText(value);
-                flashButtonLabel(copyButton);
+                if (!value) {
+                    flashButtonLabel(copyButton, "Ссылка недоступна");
+                    return;
+                }
+                const copied = await copyText(value);
+                flashButtonLabel(copyButton, copied ? "Скопировано" : "Не удалось скопировать");
                 return;
             }
 
             const qrButton = event.target.closest("[data-connection-qr-open]");
             if (qrButton) {
-                openConnectionModal(qrButton.closest("[data-connection-card]"), qrButton);
+                const card = qrButton.closest("[data-connection-card]");
+                if (!card?.dataset.connectionQrUrl) {
+                    flashButtonLabel(qrButton, "QR недоступен");
+                    return;
+                }
+                openConnectionModal(card, qrButton);
                 return;
             }
             const downloadLink = event.target.closest("[data-connection-download]");
