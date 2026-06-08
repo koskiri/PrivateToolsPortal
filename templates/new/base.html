@@ -28,20 +28,30 @@
                     <span class="nav-icon">◌</span><span>Профиль</span>
                 </a>
             </nav>
+            {% set sidebar_vk_support_link = vk_bot_link|default('', true) %}
             {% set sidebar_telegram_support_link = telegram_support_link|default('', true) %}
-            <div class="sidebar-support-card" aria-label="Поддержка">
-                <strong>Поддержка</strong>
-                <small>Если возникли проблемы с подключением — напишите нам.</small>
-                {% if sidebar_telegram_support_link and sidebar_telegram_support_link != '#' %}
-                    <a class="button secondary sidebar-support-card__button" href="{{ sidebar_telegram_support_link }}" target="_blank" rel="noopener noreferrer">Написать</a>
-                {% else %}
-                    <button class="button secondary sidebar-support-card__button" type="button" disabled aria-disabled="true">Telegram · скоро</button>
-                {% endif %}
-            </div>
-            <div class="sidebar-card">
-                <span class="eyebrow">Статус</span>
-                <strong>{{ role_label }}</strong>
-                <small>{{ 'Доступны приглашения' if is_sponsor else 'Можно перейти на спонсорство' }}</small>
+            <div class="sidebar-bottom-stack">
+                <div class="sidebar-card">
+                    <span class="eyebrow">Статус</span>
+                    <strong>{{ role_label }}</strong>
+                    <small>{{ 'Доступны приглашения' if is_sponsor else 'Можно перейти на спонсорство' }}</small>
+                </div>
+                <div class="sidebar-support-card" aria-label="Поддержка">
+                    <strong>Поддержка</strong>
+                    <small>Если возникли проблемы с подключением — напишите нам.</small>
+                    <div class="sidebar-support-card__actions">
+                        {% if sidebar_vk_support_link and sidebar_vk_support_link != '#' %}
+                            <a class="button secondary sidebar-support-card__button" href="{{ sidebar_vk_support_link }}" target="_blank" rel="noopener noreferrer">VK</a>
+                        {% else %}
+                            <button class="button secondary sidebar-support-card__button" type="button" disabled aria-disabled="true">VK</button>
+                        {% endif %}
+                        {% if sidebar_telegram_support_link and sidebar_telegram_support_link != '#' %}
+                            <a class="button secondary sidebar-support-card__button" href="{{ sidebar_telegram_support_link }}" target="_blank" rel="noopener noreferrer">Telegram</a>
+                        {% else %}
+                            <button class="button secondary sidebar-support-card__button" type="button" disabled aria-disabled="true">Telegram · скоро</button>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
         </aside>
 
