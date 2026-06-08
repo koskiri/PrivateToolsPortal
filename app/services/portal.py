@@ -80,9 +80,21 @@ def apply_sponsor_upgrade(con: sqlite3.Connection, telegram_id: int, now: dateti
     active_until = parse_subscription_active_until(subscription["active_until"] if subscription else None)
     base = active_until if active_until and active_until > now else now
     new_active_until = base + timedelta(days=SPONSOR_ACCESS_DAYS)
+    sponsor_subscription_preset = TARIFF_PRESETS["plan_5"]
     con.execute(
-        "UPDATE subscriptions SET active_until = ? WHERE telegram_id = ?",
-        (new_active_until.isoformat(), telegram_id),
+        (
+            "INSERT INTO subscriptions (telegram_id, active_until, plan, key_limit, price_rub, title) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(telegram_id) DO UPDATE SET active_until = excluded.active_until"
+        ),
+        (
+            telegram_id,
+            new_active_until.isoformat(),
+            sponsor_subscription_preset["plan"],
+            int(sponsor_subscription_preset["key_limit"]),
+            int(sponsor_subscription_preset["price_rub"]),
+            sponsor_subscription_preset["title"],
+        ),
     )
     return True
 

@@ -640,6 +640,9 @@ async def dashboard_sponsor_upgrade(request: Request):
 
 @router.post("/dashboard/referral-invite")
 async def dashboard_create_referral_invite(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
     if not is_sponsor_role(user["role"] if "role" in user.keys() else None):
         return RedirectResponse("/dashboard?error=Инвайт-ссылки+доступны+только+спонсорам", status_code=303)
 
