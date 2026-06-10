@@ -252,11 +252,11 @@ h3 { font-size: 18px; }
 .info-list .status-icon, .info-list .status-text { margin-bottom: 0; font-size: inherit; }
 .info-list .status-icon { display: inline-flex; }
 .info-list .status-text { display: inline; }
-.status-success .status-icon,
-.status-connected .status-icon { color: var(--status-success); }
-.status-pending .status-icon { color: var(--status-pending); }
-.status-error .status-icon { color: var(--status-error); }
-.status-inactive .status-icon { color: var(--status-inactive); }
+.status-success { color: var(--status-success); }
+.status-connected { color: var(--status-connected); }
+.status-pending { color: var(--status-pending); }
+.status-error { color: var(--status-error); }
+.status-inactive { color: var(--status-inactive); }
 [data-theme="light"] .status {
     gap: 6px;
     min-height: 0;
@@ -266,26 +266,30 @@ h3 { font-size: 18px; }
     font-size: 13px;
     font-weight: 500;
 }
-[data-theme="light"] .status-success,
+[data-theme="light"] .status-success {
+    color: #15803D;
+    background: #DCFCE7;
+    border-color: #86EFAC;
+}
 [data-theme="light"] .status-connected {
-    color: #16A34A;
-    background: #ECFDF3;
-    border-color: #BBF7D0;
+    color: #1D4ED8;
+    background: #DBEAFE;
+    border-color: #93C5FD;
 }
 [data-theme="light"] .status-pending {
-    color: #D97706;
-    background: #FFFBEB;
-    border-color: #FDE68A;
+    color: #B45309;
+    background: #FEF3C7;
+    border-color: #FCD34D;
 }
 [data-theme="light"] .status-error {
-    color: #DC2626;
-    background: #FEF2F2;
-    border-color: #FECACA;
+    color: #B91C1C;
+    background: #FEE2E2;
+    border-color: #FCA5A5;
 }
 [data-theme="light"] .status-inactive {
-    color: #6B7280;
-    background: #F3F4F6;
-    border-color: #E5E7EB;
+    color: #4B5563;
+    background: #E5E7EB;
+    border-color: #D1D5DB;
 }
 [data-theme="light"] .status-icon { color: currentColor; }
 
