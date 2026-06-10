@@ -34,9 +34,19 @@ def is_invite_used(invite_row: sqlite3.Row | None) -> bool:
         return bool(used_at.strip())
     return True
 
+def is_invite_revoked(invite_row: sqlite3.Row | None) -> bool:
+    if not invite_row or "revoked_at" not in invite_row.keys():
+        return False
+    revoked_at = invite_row["revoked_at"]
+    if revoked_at is None:
+        return False
+    if isinstance(revoked_at, str):
+        return bool(revoked_at.strip())
+    return True
+
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, activated: int = 0, invite_used: int = 0, reason: str = ""):
+async def login_page(request: Request, activated: int = 0, invite_used: int = 0, reason: str = "", error: str = ""):
     if get_current_user(request):
         return RedirectResponse("/dashboard", status_code=303)
     success_message = "Аккаунт успешно активирован. Войдите под своим логином и паролем." if activated else None
@@ -49,7 +59,7 @@ async def login_page(request: Request, activated: int = 0, invite_used: int = 0,
     return templates.TemplateResponse(
         request=request,
         name="login.html",
-        context={"error": None, "success": success_message, "invite_used": invite_used_message},
+        context={"error": error or None, "success": success_message, "invite_used": invite_used_message},
     )
 
 
@@ -87,15 +97,16 @@ async def activate_page(request: Request, code: str = ""):
         with get_db_connection() as con:
             invite_info = con.execute(
                 (
-                    "SELECT i.invite_code, i.used_at, i.plan, i.key_limit, i.title, i.price_rub, i.duration_days "
+                    "SELECT i.invite_code, i.used_at, i.revoked_at, i.plan, i.key_limit, i.title, i.price_rub, i.duration_days "
                     "FROM portal_invites i "
                     "WHERE i.invite_code = ?"
                 ),
                 (code,),
             ).fetchone()
 
-        if not invite_info:
-            error = "Инвайт не найден"
+        elif is_invite_revoked(invite_info):
+            error = "Инвайт отозван"
+            invite_info = None
         elif is_invite_used(invite_info):
             return RedirectResponse("/login?invite_used=1&reason=invite_used", status_code=303)
 
@@ -137,6 +148,14 @@ async def activate_submit(
                 name="activate.html",
                 context={"code": code, "invite": None, "error": "Инвайт не найден", "success": None},
                 status_code=404,
+            )
+        
+        if is_invite_revoked(invite):
+            return templates.TemplateResponse(
+                request=request,
+                name="activate.html",
+                context={"code": code, "invite": None, "error": "Инвайт отозван", "success": None},
+                status_code=410,
             )
 
         if is_invite_used(invite):

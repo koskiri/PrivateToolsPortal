@@ -487,6 +487,12 @@
                 return;
             }
 
+            const revokeInviteForm = event.target.closest("[data-invite-revoke-form]");
+            if (revokeInviteForm && !window.confirm("Отозвать это неиспользованное приглашение?")) {
+                event.preventDefault();
+                return;
+            }
+
             const deleteForm = event.target.closest("[data-connection-delete-form]");
             if (deleteForm) {
                 event.preventDefault();

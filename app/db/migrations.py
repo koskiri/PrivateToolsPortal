@@ -17,6 +17,7 @@ def ensure_auth_tables() -> None:
                 password_hash TEXT NOT NULL,
                 revoked_at TEXT,
                 role TEXT DEFAULT 'user',
+                referral_code TEXT UNIQUE,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -30,7 +31,8 @@ def ensure_auth_tables() -> None:
                 invite_code TEXT NOT NULL UNIQUE,
                 telegram_id INTEGER NOT NULL,
                 created_at TEXT NOT NULL,
-                used_at TEXT
+                used_at TEXT,
+                revoked_at TEXT
             )
             """
         )
@@ -187,6 +189,8 @@ def ensure_referral_tables(con: sqlite3.Connection) -> None:
         con.execute("ALTER TABLE portal_invites ADD COLUMN created_by_user_id INTEGER")
     if "used_by_user_id" not in invite_columns:
         con.execute("ALTER TABLE portal_invites ADD COLUMN used_by_user_id INTEGER")
+    if "revoked_at" not in invite_columns:
+        con.execute("ALTER TABLE portal_invites ADD COLUMN revoked_at TEXT")
 
     user_columns = {row["name"] for row in con.execute("PRAGMA table_info(portal_users)").fetchall()}
     if "invited_by_user_id" not in user_columns:
@@ -194,7 +198,10 @@ def ensure_referral_tables(con: sqlite3.Connection) -> None:
 
     if "role" not in user_columns:
         con.execute("ALTER TABLE portal_users ADD COLUMN role TEXT DEFAULT 'user'")
+    if "referral_code" not in user_columns:
+        con.execute("ALTER TABLE portal_users ADD COLUMN referral_code TEXT")
     con.execute("UPDATE portal_users SET role = 'user' WHERE role IS NULL OR role NOT IN ('user', 'sponsor')")
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_portal_users_referral_code ON portal_users(referral_code) WHERE referral_code IS NOT NULL")
 
 def migrate_telegram_columns(con: sqlite3.Connection) -> None:
     users_telegram_notnull = con.execute("PRAGMA table_info(portal_users)").fetchall()
@@ -210,6 +217,7 @@ def migrate_telegram_columns(con: sqlite3.Connection) -> None:
     if need_users_migration:
         user_columns_before_migration = {row["name"] for row in users_telegram_notnull}
         role_select = "COALESCE(role, 'user')" if "role" in user_columns_before_migration else "'user'"
+        referral_code_select = "referral_code" if "referral_code" in user_columns_before_migration else "NULL"
         con.execute(
             """
             CREATE TABLE portal_users_new (
@@ -219,6 +227,7 @@ def migrate_telegram_columns(con: sqlite3.Connection) -> None:
                 password_salt TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
                 role TEXT DEFAULT 'user',
+                referral_code TEXT UNIQUE,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -226,8 +235,8 @@ def migrate_telegram_columns(con: sqlite3.Connection) -> None:
         )
         con.execute(
             f"""
-            INSERT INTO portal_users_new (id, telegram_id, login, password_salt, password_hash, role, created_at, updated_at)
-            SELECT id, telegram_id, login, password_salt, password_hash, {role_select}, created_at, updated_at
+            INSERT INTO portal_users_new (id, telegram_id, login, password_salt, password_hash, role, referral_code, created_at, updated_at)
+            SELECT id, telegram_id, login, password_salt, password_hash, {role_select}, {referral_code_select}, created_at, updated_at
             FROM portal_users
             """
         )
@@ -238,7 +247,10 @@ def migrate_telegram_columns(con: sqlite3.Connection) -> None:
         con.execute("ALTER TABLE portal_users ADD COLUMN revoked_at TEXT")
     if "role" not in users_columns:
         con.execute("ALTER TABLE portal_users ADD COLUMN role TEXT DEFAULT 'user'")
+    if "referral_code" not in users_columns:
+        con.execute("ALTER TABLE portal_users ADD COLUMN referral_code TEXT")
     con.execute("UPDATE portal_users SET role = 'user' WHERE role IS NULL OR role NOT IN ('user', 'sponsor')")
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_portal_users_referral_code ON portal_users(referral_code) WHERE referral_code IS NOT NULL")
 
     if need_invites_migration:
         con.execute(
@@ -248,14 +260,15 @@ def migrate_telegram_columns(con: sqlite3.Connection) -> None:
                 invite_code TEXT NOT NULL UNIQUE,
                 telegram_id INTEGER,
                 created_at TEXT NOT NULL,
-                used_at TEXT
+                used_at TEXT,
+                revoked_at TEXT
             )
             """
         )
         con.execute(
             """
-            INSERT INTO portal_invites_new (id, invite_code, telegram_id, created_at, used_at)
-            SELECT id, invite_code, telegram_id, created_at, used_at
+            INSERT INTO portal_invites_new (id, invite_code, telegram_id, created_at, used_at, revoked_at)
+            SELECT id, invite_code, telegram_id, created_at, used_at, NULL
             FROM portal_invites
             """
         )
@@ -278,6 +291,8 @@ def migrate_telegram_columns(con: sqlite3.Connection) -> None:
         con.execute("ALTER TABLE portal_invites ADD COLUMN created_by_user_id INTEGER")
     if "used_by_user_id" not in invite_columns:
         con.execute("ALTER TABLE portal_invites ADD COLUMN used_by_user_id INTEGER")
+    if "revoked_at" not in invite_columns:
+        con.execute("ALTER TABLE portal_invites ADD COLUMN revoked_at TEXT")
 
     # Portal users can register without Telegram. To keep compatibility with
     # legacy tables keyed by telegram_id, assign deterministic synthetic IDs.

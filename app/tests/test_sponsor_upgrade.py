@@ -15,7 +15,13 @@ dotenv_stub = types.ModuleType("dotenv")
 dotenv_stub.load_dotenv = lambda *args, **kwargs: None
 sys.modules.setdefault("dotenv", dotenv_stub)
 
-from app.services.portal import apply_sponsor_upgrade  # noqa: E402
+from app.services.portal import (  # noqa: E402
+    apply_sponsor_upgrade,
+    ensure_sponsor_referral_code,
+    get_or_create_invite_for_referral_code,
+    get_user_invite_stats,
+    revoke_referral_invite,
+)
 
 
 class SponsorUpgradeAccessTests(unittest.TestCase):
@@ -117,6 +123,104 @@ class SponsorUpgradeAccessTests(unittest.TestCase):
         sponsor_branch = template.split("{% if is_sponsor %}", 1)[1].split("{% else %}", 1)[0]
         self.assertNotIn("/dashboard/sponsor-upgrade", sponsor_branch)
         self.assertIn("Единоразово 5 000 ₽ · включает 1 год доступа", template)
+    
+class ReferralQrAndRevokeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.con = sqlite3.connect(":memory:")
+        self.con.row_factory = sqlite3.Row
+        self.con.executescript(
+            """
+            CREATE TABLE portal_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER UNIQUE,
+                login TEXT,
+                role TEXT,
+                referral_code TEXT UNIQUE,
+                updated_at TEXT
+            );
+            CREATE TABLE portal_invites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invite_code TEXT NOT NULL UNIQUE,
+                telegram_id INTEGER,
+                created_at TEXT NOT NULL,
+                used_at TEXT,
+                revoked_at TEXT,
+                plan TEXT,
+                title TEXT,
+                key_limit INTEGER,
+                price_rub INTEGER,
+                duration_days INTEGER,
+                invited_by_user_id INTEGER,
+                created_by_user_id INTEGER,
+                used_by_user_id INTEGER
+            );
+            """
+        )
+        self.con.execute(
+            "INSERT INTO portal_users (id, telegram_id, login, role, updated_at) VALUES (1, 2001, 'sponsor', 'sponsor', '')"
+        )
+        self.con.execute(
+            "INSERT INTO portal_users (id, telegram_id, login, role, updated_at) VALUES (2, 2002, 'user', 'user', '')"
+        )
+
+    def tearDown(self) -> None:
+        self.con.close()
+
+    def test_sponsor_gets_stable_referral_code(self) -> None:
+        first = ensure_sponsor_referral_code(self.con, 1)
+        second = ensure_sponsor_referral_code(self.con, 1)
+
+        self.assertTrue(first)
+        self.assertEqual(first, second)
+
+    def test_referral_link_uses_existing_free_invite(self) -> None:
+        code = ensure_sponsor_referral_code(self.con, 1)
+        self.con.execute(
+            "INSERT INTO portal_invites (invite_code, created_at, invited_by_user_id, created_by_user_id) VALUES ('free-invite', '2026-06-08T12:00:00+00:00', 1, 1)"
+        )
+
+        invite = get_or_create_invite_for_referral_code(self.con, code)
+
+        self.assertEqual(invite["invite_code"], "free-invite")
+        self.assertEqual(self.con.execute("SELECT COUNT(*) AS c FROM portal_invites").fetchone()["c"], 1)
+
+    def test_referral_link_creates_invite_when_none_available(self) -> None:
+        code = ensure_sponsor_referral_code(self.con, 1)
+
+        invite = get_or_create_invite_for_referral_code(self.con, code)
+
+        self.assertTrue(invite["invite_code"])
+        stats = get_user_invite_stats(self.con, 1)
+        self.assertEqual(int(stats["available"] or 0), 1)
+
+    def test_referral_link_rejects_regular_user_code(self) -> None:
+        user_code = ensure_sponsor_referral_code(self.con, 2)
+
+        with self.assertRaises(PermissionError):
+            get_or_create_invite_for_referral_code(self.con, user_code)
+
+    def test_sponsor_can_revoke_own_unused_invite_and_stats_exclude_it(self) -> None:
+        self.con.execute(
+            "INSERT INTO portal_invites (id, invite_code, created_at, invited_by_user_id, created_by_user_id) VALUES (10, 'unused', '2026-06-08T12:00:00+00:00', 1, 1)"
+        )
+
+        self.assertTrue(revoke_referral_invite(self.con, 1, 10))
+        stats = get_user_invite_stats(self.con, 1)
+        self.assertEqual(int(stats["available"] or 0), 0)
+
+    def test_sponsor_cannot_revoke_used_invite(self) -> None:
+        self.con.execute(
+            "INSERT INTO portal_invites (id, invite_code, created_at, used_at, invited_by_user_id, created_by_user_id) VALUES (11, 'used', '2026-06-08T12:00:00+00:00', '2026-06-09T12:00:00+00:00', 1, 1)"
+        )
+
+        self.assertFalse(revoke_referral_invite(self.con, 1, 11))
+
+    def test_sponsor_cannot_revoke_foreign_invite(self) -> None:
+        self.con.execute(
+            "INSERT INTO portal_invites (id, invite_code, created_at, invited_by_user_id, created_by_user_id) VALUES (12, 'foreign', '2026-06-08T12:00:00+00:00', 2, 2)"
+        )
+
+        self.assertFalse(revoke_referral_invite(self.con, 1, 12))
 
 class DashboardReferralInviteRouteTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -198,6 +302,9 @@ class DashboardReferralInviteRouteTests(unittest.TestCase):
             "created_at": "2026-06-08T12:00:00+00:00",
         }
 
+        class FakeCursor:
+            rowcount = 0
+
         class FakeConnection:
             total_changes = 0
 
@@ -208,7 +315,7 @@ class DashboardReferralInviteRouteTests(unittest.TestCase):
                 return False
 
             def execute(self, *args, **kwargs):
-                return None
+                return FakeCursor()
 
             def commit(self):
                 self.committed = True
@@ -221,6 +328,15 @@ class DashboardReferralInviteRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 303)
         self.assertEqual(response.url, "/dashboard?success=Новая+инвайт-ссылка+создана")
         self.assertTrue(getattr(fake_connection, "committed", False))
+
+    def test_revoke_invite_forbids_regular_user_without_opening_db(self) -> None:
+        self.dashboard.get_current_user = lambda request: self._user("user")
+        self.dashboard.get_db_connection = lambda: self.fail("regular user must not open DB connection")
+
+        response = asyncio.run(self.dashboard.new_ui_revoke_invite(object(), 10))
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("только+спонсоры", response.url)
 
 if __name__ == "__main__":
     unittest.main()

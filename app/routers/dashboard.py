@@ -26,9 +26,12 @@ from app.core.db import get_db_connection
 from app.core.security import get_current_user
 from app.services.portal import (
     build_activate_link,
+    build_sponsor_referral_link,
     apply_sponsor_upgrade,
     build_plan_change_terms,
     create_referral_invite,
+    ensure_sponsor_referral_code,
+    get_or_create_invite_for_referral_code,
     create_vk_link_code,
     create_vpn_key_on_vps,
     create_yookassa_payment,
@@ -43,6 +46,7 @@ from app.services.portal import (
     get_vk_link_by_portal_user,
     increase_wallet_balance,
     is_sponsor_role,
+    revoke_referral_invite,
     revoke_vpn_key_on_vps,
     unlink_vk_by_portal_user,
     utcnow,
@@ -108,7 +112,7 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
         invite_list = con.execute(
             (
                 "SELECT invite_code, created_at, used_at "
-                "FROM portal_invites WHERE invited_by_user_id = ? "
+                "FROM portal_invites WHERE invited_by_user_id = ? AND revoked_at IS NULL "
                 "ORDER BY datetime(created_at) DESC"
             ),
             (user["id"],),
@@ -125,7 +129,6 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
         for inv in invite_list
     ]
 
-    is_sponsor = is_sponsor_role(user["role"] if "role" in user.keys() else None)
     role_label = get_user_role_label(user["role"] if "role" in user.keys() else None)
 
     support_messages_by_ticket: dict[int, list[sqlite3.Row]] = {}
@@ -447,7 +450,7 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         referral_stats = get_user_invite_stats(con, int(user["id"]))
         invite_rows = con.execute(
             (
-                "SELECT i.invite_code, i.created_at, i.used_at, u.login AS used_by_login "
+                "SELECT i.id, i.invite_code, i.created_at, i.used_at, i.revoked_at, u.login AS used_by_login "
                 "FROM portal_invites i "
                 "LEFT JOIN portal_users u ON u.id = i.used_by_user_id "
                 "WHERE i.invited_by_user_id = ? "
@@ -465,6 +468,10 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
             (user["telegram_id"],),
         ).fetchall()
 
+        is_sponsor = is_sponsor_role(user["role"] if "role" in user.keys() else None)
+        sponsor_referral_code = ensure_sponsor_referral_code(con, int(user["id"])) if is_sponsor else ""
+        con.commit()
+
     now = utcnow()
     active_until = None
     subscription_active = False
@@ -478,23 +485,25 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
     total_invites = int(referral_stats["total"] or 0)
     used_invites = int(referral_stats["used"] or 0)
     available_invites = int(referral_stats["available"] or 0)
-    is_sponsor = is_sponsor_role(user["role"] if "role" in user.keys() else None)
     role_label = get_user_role_label(user["role"] if "role" in user.keys() else None)
 
     invite_history = [
         {
-            "user": row["used_by_login"] or "Ожидает регистрации",
-            "registered_at": _format_new_ui_date(row["used_at"]),
-            "status": "Активен" if row["used_at"] else "Ожидает",
+            "id": row["id"],
+            "user": row["used_by_login"] or ("Отозвано" if row["revoked_at"] else "Ожидает регистрации"),
+            "registered_at": _format_new_ui_date(row["used_at"] or row["revoked_at"]),
+            "status": "Отозвано" if row["revoked_at"] else ("Активен" if row["used_at"] else "Ожидает"),
+            "can_revoke": not row["used_at"] and not row["revoked_at"],
             "invite_code": row["invite_code"],
-            "invite_link": build_activate_link(row["invite_code"]),
+            "invite_link": "" if row["revoked_at"] else build_activate_link(row["invite_code"]),
         }
         for row in invite_rows
     ]
     primary_invite_link = next(
-        (item["invite_link"] for item in invite_history if item["status"] != "Активен"),
+        (item["invite_link"] for item in invite_history if item["status"] == "Ожидает"),
         "",
     )
+    sponsor_referral_link = build_sponsor_referral_link(sponsor_referral_code) if sponsor_referral_code else ""
 
     connection_devices = tuple(
         {
@@ -570,6 +579,8 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         },
         "invite_history": invite_history,
         "primary_invite_link": primary_invite_link,
+        "sponsor_referral_link": sponsor_referral_link,
+        "sponsor_referral_qr_url": f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data={quote_plus(sponsor_referral_link)}" if sponsor_referral_link else "",
         "invite_limit_reached": available_invites >= 10,
         "profile": profile,
         "vk_bot_link": get_vk_bot_link() or "#",
@@ -595,6 +606,36 @@ async def new_ui_invites(request: Request):
     if isinstance(context, RedirectResponse):
         return context
     return templates.TemplateResponse(request=request, name="new/invites.html", context=context)
+
+@router.get("/r/{referral_code}")
+async def sponsor_referral_redirect(referral_code: str):
+    with get_db_connection() as con:
+        try:
+            invite = get_or_create_invite_for_referral_code(con, referral_code.strip())
+        except PermissionError as exc:
+            return RedirectResponse(f"/login?error={quote_plus(str(exc))}", status_code=303)
+        except OverflowError as exc:
+            return RedirectResponse(f"/login?error={quote_plus(str(exc))}", status_code=303)
+        con.commit()
+
+    return RedirectResponse(f"/activate?code={quote_plus(invite['invite_code'])}", status_code=303)
+
+
+@router.post("/new-ui/invites/{invite_id}/revoke")
+async def new_ui_revoke_invite(request: Request, invite_id: int):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if not is_sponsor_role(user["role"] if "role" in user.keys() else None):
+        return RedirectResponse("/new-ui/invites?error=Отзывать+приглашения+могут+только+спонсоры", status_code=303)
+
+    with get_db_connection() as con:
+        revoked = revoke_referral_invite(con, int(user["id"]), invite_id)
+        con.commit()
+
+    if not revoked:
+        return RedirectResponse("/new-ui/invites?error=Приглашение+не+найдено,+уже+использовано+или+отозвано", status_code=303)
+    return RedirectResponse("/new-ui/invites?success=Приглашение+отозвано", status_code=303)
 
 
 @router.get("/new-ui/profile", response_class=HTMLResponse)
@@ -684,11 +725,11 @@ async def dashboard_create_referral_invite(request: Request, return_to: str = Fo
                 status_code=303,
             )
         referral = create_referral_invite(con, int(user["id"]))
-        con.execute(
+        referral_cursor = con.execute(
             "UPDATE user_referrals SET invite_code = ?, created_at = ? WHERE referrer_user_id = ?",
             (referral["invite_code"], referral["created_at"], user["id"]),
         )
-        if con.total_changes == 0:
+        if referral_cursor.rowcount == 0:
             con.execute(
                 "INSERT INTO user_referrals (referrer_user_id, invite_code, created_at) VALUES (?, ?, ?)",
                 (user["id"], referral["invite_code"], referral["created_at"]),

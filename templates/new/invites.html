@@ -16,7 +16,7 @@
         <a class="button primary" href="/new-ui">Стать спонсором</a>
     </section>
 {% else %}
-    {% set has_invites = invite_stats.total|int > 0 %}
+    {% set has_invites = invite_history|length > 0 %}
     {% set can_create_invite = not invite_limit_reached %}
 
     <section class="stats-grid invites-stats" aria-label="Статистика приглашений">
@@ -25,14 +25,31 @@
         <article class="stat-card"><span>Использовано</span><strong>{{ invite_stats.used }}</strong></article>
     </section>
 
+    <section class="card section-card invites-permanent-card">
+        <div class="section-title"><div><p class="eyebrow">Постоянный QR-код</p><h2>Постоянная ссылка спонсора</h2></div></div>
+        <p class="muted-note">Показывайте эту ссылку или QR любому человеку. Она не одноразовая: при переходе система выдаст свободный одноразовый invite или создаст новый в пределах лимита.</p>
+        <div class="invite-link-box">
+            <input id="sponsor-referral-link" type="text" value="{{ sponsor_referral_link }}" readonly />
+            <button class="button primary" type="button" data-copy-target="sponsor-referral-link" {% if not sponsor_referral_link %}disabled aria-disabled="true"{% endif %}>Скопировать ссылку</button>
+        </div>
+        {% if sponsor_referral_qr_url %}
+            <details class="referral-qr-details">
+                <summary class="button secondary">Показать QR</summary>
+                <div class="connection-qr-frame referral-qr-frame">
+                    <img src="{{ sponsor_referral_qr_url }}" alt="Постоянный QR-код спонсора" loading="lazy" />
+                </div>
+            </details>
+        {% endif %}
+    </section>
+
     {% if not has_invites %}
         <section class="card empty-state invites-empty-state">
             <p class="eyebrow">Новый доступ</p>
-            <h2>У вас пока нет приглашений</h2>
-            <p>Создайте одноразовую ссылку и отправьте её другу. После регистрации приглашение станет использованным.</p>
+            <h2>Нет активных приглашений</h2>
+            <p>Создайте одноразовую ссылку вручную или используйте постоянный QR-код — он создаст invite автоматически при переходе.</p>
             <form action="/dashboard/referral-invite" method="post">
                 <input type="hidden" name="return_to" value="/new-ui/invites" />
-                <button class="button primary" type="submit">Создать приглашение</button>
+                <button class="button primary" type="submit" {% if not can_create_invite %}disabled aria-disabled="true"{% endif %}>Создать приглашение</button>
             </form>
         </section>
     {% else %}
@@ -50,12 +67,12 @@
                 </form>
             </div>
             {% if not can_create_invite %}
-                <p class="muted-note">У вас уже есть 10 неиспользованных приглашений. Отправьте одну из ссылок другу или дождитесь регистрации.</p>
+                <p class="muted-note">У вас уже есть 10 неиспользованных приглашений. Отправьте одну из ссылок другу, отзовите лишнюю или дождитесь регистрации.</p>
             {% endif %}
         </section>
 
         <section class="card section-card invites-share-card">
-            <div class="section-title"><div><p class="eyebrow">Ссылка приглашения</p><h2>Поделитесь доступом</h2></div></div>
+            <div class="section-title"><div><p class="eyebrow">Ссылка приглашения</p><h2>Поделитесь одноразовым доступом</h2></div></div>
             <div class="invite-link-box">
                 <input id="invite-link" type="text" value="{{ primary_invite_link or 'Нет активных приглашений' }}" readonly />
                 <button class="button primary" type="button" data-copy-target="invite-link" {% if not primary_invite_link %}disabled aria-disabled="true"{% endif %}>Копировать</button>
@@ -67,7 +84,7 @@
         <div class="section-title"><div><p class="eyebrow">История приглашений</p><h2>Регистрации</h2></div></div>
         <div class="table-wrap invites-table-wrap">
             <table class="invites-table">
-                <thead><tr><th>Статус</th><th>Пользователь</th><th>Дата регистрации</th></tr></thead>
+                <thead><tr><th>Статус</th><th>Пользователь</th><th>Дата</th><th>Действия</th></tr></thead>
                 <tbody>
                 {% for item in invite_history %}
                     <tr>
@@ -80,10 +97,19 @@
                                 <small class="invite-row-link">{{ item.invite_code }}</small>
                             {% endif %}
                         </td>
-                        <td data-label="Дата регистрации">{{ item.registered_at }}</td>
+                        <td data-label="Дата">{{ item.registered_at }}</td>
+                        <td data-label="Действия">
+                            {% if item.can_revoke %}
+                                <form action="/new-ui/invites/{{ item.id }}/revoke" method="post" data-invite-revoke-form>
+                                    <button class="button secondary" type="submit">Отозвать</button>
+                                </form>
+                            {% else %}
+                                <span class="muted-note">—</span>
+                            {% endif %}
+                        </td>
                     </tr>
                 {% else %}
-                    <tr><td colspan="3">Приглашений пока нет.</td></tr>
+                    <tr><td colspan="4">Нет активных приглашений.</td></tr>
                 {% endfor %}
                 </tbody>
             </table>

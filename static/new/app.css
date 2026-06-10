@@ -577,4 +577,8 @@ th { color: var(--muted); font-size: 13px; }
     .stats-grid.invites-stats { gap: 12px; }
     .stats-grid.invites-stats .stat-card { padding: 18px; }
     .stats-grid.invites-stats .stat-card strong { font-size: 30px; }
-}
+}.referral-qr-details { margin-top: 16px; }
+.referral-qr-details summary { width: fit-content; cursor: pointer; list-style: none; }
+.referral-qr-details summary::-webkit-details-marker { display: none; }
+.referral-qr-frame { width: fit-content; margin-top: 14px; }
+.invites-table form { margin: 0; }

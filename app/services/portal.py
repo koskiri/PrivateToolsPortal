@@ -122,11 +122,58 @@ def is_invite_used(invite_row: sqlite3.Row | None) -> bool:
     return True
 
 
-def build_activate_link(invite_code: str) -> str:
+def is_invite_revoked(invite_row: sqlite3.Row | None) -> bool:
+    if not invite_row or "revoked_at" not in invite_row.keys():
+        return False
+    revoked_at = invite_row["revoked_at"]
+    if revoked_at is None:
+        return False
+    if isinstance(revoked_at, str):
+        return bool(revoked_at.strip())
+    return True
+
+
+def _portal_base_url() -> str:
     base_url = (os.getenv(APP_BASE_URL_ENV, "") or "").strip().rstrip("/")
     if not base_url:
         base_url = "http://localhost:8000"
-    return f"{base_url}/activate?code={quote_plus(invite_code)}"
+    return base_url
+
+
+def build_activate_link(invite_code: str) -> str:
+    return f"{_portal_base_url()}/activate?code={quote_plus(invite_code)}"
+
+
+def build_sponsor_referral_link(referral_code: str) -> str:
+    return f"{_portal_base_url()}/r/{quote_plus(referral_code)}"
+
+
+def _generate_unique_referral_code(con: sqlite3.Connection) -> str:
+    for _ in range(20):
+        code = secrets.token_urlsafe(9).rstrip("=")
+        exists = con.execute("SELECT 1 FROM portal_users WHERE referral_code = ?", (code,)).fetchone()
+        if not exists:
+            return code
+    raise RuntimeError("Unable to generate unique referral code")
+
+
+def ensure_sponsor_referral_code(con: sqlite3.Connection, user_id: int) -> str:
+    user = con.execute(
+        "SELECT referral_code FROM portal_users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    if not user:
+        raise ValueError("Sponsor not found")
+    referral_code = (user["referral_code"] or "").strip()
+    if referral_code:
+        return referral_code
+
+    referral_code = _generate_unique_referral_code(con)
+    con.execute(
+        "UPDATE portal_users SET referral_code = ?, updated_at = ? WHERE id = ?",
+        (referral_code, utcnow().isoformat(), user_id),
+    )
+    return referral_code
 
 
 def create_referral_invite(con: sqlite3.Connection, user_id: int) -> dict[str, str]:
@@ -157,31 +204,63 @@ def create_referral_invite(con: sqlite3.Connection, user_id: int) -> dict[str, s
 def get_user_invite_stats(con: sqlite3.Connection, user_id: int) -> sqlite3.Row:
     return con.execute(
         (
-            "SELECT COUNT(*) AS total, "
-            "SUM(CASE WHEN used_at IS NOT NULL THEN 1 ELSE 0 END) AS used, "
-            "SUM(CASE WHEN used_at IS NULL THEN 1 ELSE 0 END) AS available "
+            "SELECT "
+            "SUM(CASE WHEN revoked_at IS NULL THEN 1 ELSE 0 END) AS total, "
+            "SUM(CASE WHEN revoked_at IS NULL AND used_at IS NOT NULL THEN 1 ELSE 0 END) AS used, "
+            "SUM(CASE WHEN revoked_at IS NULL AND used_at IS NULL THEN 1 ELSE 0 END) AS available "
             "FROM portal_invites WHERE invited_by_user_id = ?"
         ),
         (user_id,),
     ).fetchone()
 
+def get_or_create_invite_for_referral_code(con: sqlite3.Connection, referral_code: str) -> sqlite3.Row:
+    sponsor = con.execute(
+        "SELECT id, role FROM portal_users WHERE referral_code = ?",
+        (referral_code,),
+    ).fetchone()
+    if not sponsor or not is_sponsor_role(sponsor["role"]):
+        raise PermissionError("Постоянная ссылка недоступна или спонсорство отключено")
+
+    sponsor_id = int(sponsor["id"])
+    available_invite = con.execute(
+        (
+            "SELECT * FROM portal_invites "
+            "WHERE invited_by_user_id = ? AND used_at IS NULL AND revoked_at IS NULL "
+            "ORDER BY datetime(created_at) ASC, id ASC LIMIT 1"
+        ),
+        (sponsor_id,),
+    ).fetchone()
+    if available_invite:
+        return available_invite
+
+    stats = get_user_invite_stats(con, sponsor_id)
+    if int(stats["available"] or 0) >= 10:
+        raise OverflowError("У спонсора уже есть 10 неиспользованных приглашений")
+
+    create_referral_invite(con, sponsor_id)
+    return con.execute(
+        (
+            "SELECT * FROM portal_invites "
+            "WHERE invited_by_user_id = ? AND used_at IS NULL AND revoked_at IS NULL "
+            "ORDER BY datetime(created_at) DESC, id DESC LIMIT 1"
+        ),
+        (sponsor_id,),
+    ).fetchone()
 
 
+def revoke_referral_invite(con: sqlite3.Connection, sponsor_id: int, invite_id: int) -> bool:
+    invite = con.execute(
+        "SELECT id, used_at, revoked_at FROM portal_invites WHERE id = ? AND invited_by_user_id = ?",
+        (invite_id, sponsor_id),
+    ).fetchone()
+    if not invite or is_invite_used(invite) or is_invite_revoked(invite):
+        return False
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    con.execute(
+        "UPDATE portal_invites SET revoked_at = ? WHERE id = ? AND invited_by_user_id = ? AND used_at IS NULL AND revoked_at IS NULL",
+        (utcnow().isoformat(), invite_id, sponsor_id),
+    )
+    return con.total_changes > 0
 
     
 def get_or_create_wallet_balance(con: sqlite3.Connection, telegram_id: int) -> int:
