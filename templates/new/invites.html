@@ -3,36 +3,85 @@
 {% block heading %}Приглашения{% endblock %}
 {% block content %}
 {% if not is_sponsor %}
-    <section class="card empty-state">
+    <section class="card empty-state invites-user-state">
         <p class="eyebrow">Только для спонсоров</p>
-        <h2>Приглашения пока недоступны</h2>
-        <p>Эта страница подготовлена для спонсорских аккаунтов. Когда статус будет подключен, здесь появятся ссылка, QR-код и история регистраций.</p>
-        <a class="button ghost" href="/new-ui">Вернуться на главную</a>
+        <h2>Приглашения доступны только спонсорам</h2>
+        <p>Спонсоры могут:</p>
+        <ul class="benefit-list">
+            <li>приглашать новых пользователей</li>
+            <li>получать поддержку 24/7</li>
+            <li>использовать новые VPN-протоколы раньше остальных</li>
+            <li>получать доступ к новым серверам</li>
+        </ul>
+        <a class="button primary" href="/new-ui">Стать спонсором</a>
     </section>
 {% else %}
-    <section class="stats-grid">
-        <article class="stat-card"><span>Доступно инвайтов</span><strong>{{ invite_stats.available }}</strong></article>
+    {% set has_invites = invite_stats.total|int > 0 %}
+    {% set can_create_invite = not invite_limit_reached %}
+
+    <section class="stats-grid invites-stats" aria-label="Статистика приглашений">
+        <article class="stat-card"><span>Всего создано</span><strong>{{ invite_stats.total }}</strong></article>
+        <article class="stat-card"><span>Доступно</span><strong>{{ invite_stats.available }}</strong></article>
         <article class="stat-card"><span>Использовано</span><strong>{{ invite_stats.used }}</strong></article>
-        <article class="stat-card"><span>Активных пользователей</span><strong>{{ invite_stats.active_users }}</strong></article>
     </section>
 
-    <section class="card section-card">
-        <div class="section-title"><div><p class="eyebrow">Ссылка приглашения</p><h2>Поделитесь доступом</h2></div></div>
-        <div class="invite-link-box">
-            <input id="invite-link" type="text" value="{{ primary_invite_link or 'Ссылка появится после создания приглашения' }}" readonly />
-            <button class="button primary" type="button" data-copy-target="invite-link" {% if not primary_invite_link %}disabled{% endif %}>Копировать</button>
-            <button class="button ghost" type="button" disabled>QR-код · скоро</button>
-        </div>
-    </section>
+    {% if not has_invites %}
+        <section class="card empty-state invites-empty-state">
+            <p class="eyebrow">Новый доступ</p>
+            <h2>У вас пока нет приглашений</h2>
+            <p>Создайте одноразовую ссылку и отправьте её другу. После регистрации приглашение станет использованным.</p>
+            <form action="/dashboard/referral-invite" method="post">
+                <input type="hidden" name="return_to" value="/new-ui/invites" />
+                <button class="button primary" type="submit">Создать приглашение</button>
+            </form>
+        </section>
+    {% else %}
+        <section class="card section-card invites-create-card">
+            <div class="section-title">
+                <div>
+                    <p class="eyebrow">Управление</p>
+                    <h2>Создать новое приглашение</h2>
+                </div>
+                <form action="/dashboard/referral-invite" method="post" class="invite-create-form">
+                    <input type="hidden" name="return_to" value="/new-ui/invites" />
+                    <button class="button primary" type="submit" {% if not can_create_invite %}disabled aria-disabled="true"{% endif %}>
+                        {{ 'Лимит приглашений' if not can_create_invite else 'Создать приглашение' }}
+                    </button>
+                </form>
+            </div>
+            {% if not can_create_invite %}
+                <p class="muted-note">У вас уже есть 10 неиспользованных приглашений. Отправьте одну из ссылок другу или дождитесь регистрации.</p>
+            {% endif %}
+        </section>
+
+        <section class="card section-card">
+            <div class="section-title"><div><p class="eyebrow">Ссылка приглашения</p><h2>Поделитесь доступом</h2></div></div>
+            <div class="invite-link-box">
+                <input id="invite-link" type="text" value="{{ primary_invite_link or 'Нет активных приглашений' }}" readonly />
+                <button class="button primary" type="button" data-copy-target="invite-link" {% if not primary_invite_link %}disabled aria-disabled="true"{% endif %}>Копировать</button>
+            </div>
+        </section>
+    {% endif %}
 
     <section class="card section-card">
         <div class="section-title"><div><p class="eyebrow">История приглашений</p><h2>Регистрации</h2></div></div>
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>Пользователь</th><th>Дата регистрации</th><th>Статус</th></tr></thead>
+        <div class="table-wrap invites-table-wrap">
+            <table class="invites-table">
+                <thead><tr><th>Статус</th><th>Пользователь</th><th>Дата регистрации</th></tr></thead>
                 <tbody>
                 {% for item in invite_history %}
-                    <tr><td>{{ item.user }}</td><td>{{ item.registered_at }}</td><td><span class="pill {{ 'success' if item.status == 'Активен' else 'muted' }}">{{ item.status }}</span></td></tr>
+                    <tr>
+                        <td data-label="Статус"><span class="pill {{ 'success' if item.status == 'Активен' else 'muted' }}">{{ item.status }}</span></td>
+                        <td data-label="Пользователь">
+                            <span class="invite-user">{{ item.user }}</span>
+                            {% if item.invite_link %}
+                                <small class="invite-row-link">{{ item.invite_link }}</small>
+                            {% elif item.invite_code %}
+                                <small class="invite-row-link">{{ item.invite_code }}</small>
+                            {% endif %}
+                        </td>
+                        <td data-label="Дата регистрации">{{ item.registered_at }}</td>
+                    </tr>
                 {% else %}
                     <tr><td colspan="3">Приглашений пока нет.</td></tr>
                 {% endfor %}

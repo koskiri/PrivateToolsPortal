@@ -515,8 +515,8 @@
             button.addEventListener("click", async () => {
                 const target = document.getElementById(button.dataset.copyTarget || "");
                 if (!target || !target.value) return;
-                await copyText(target.value);
-                flashButtonLabel(button);
+                const copied = await copyText(target.value);
+                flashButtonLabel(button, copied ? "Скопировано" : "Не удалось скопировать");
             });
         });
     });

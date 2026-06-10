@@ -4,7 +4,6 @@ import html
 import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from urllib.parse import quote_plus
 from urllib.parse import quote_plus, urlencode
 
 from fastapi import APIRouter, Form, Request
@@ -466,11 +465,15 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
             "user": row["used_by_login"] or "Ожидает регистрации",
             "registered_at": _format_new_ui_date(row["used_at"]),
             "status": "Активен" if row["used_at"] else "Ожидает",
+            "invite_code": row["invite_code"],
             "invite_link": build_activate_link(row["invite_code"]),
         }
         for row in invite_rows
     ]
-    primary_invite_link = invite_history[0]["invite_link"] if invite_history else ""
+    primary_invite_link = next(
+        (item["invite_link"] for item in invite_history if item["status"] != "Активен"),
+        "",
+    )
 
     connection_devices = tuple(
         {
@@ -546,6 +549,7 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         },
         "invite_history": invite_history,
         "primary_invite_link": primary_invite_link,
+        "invite_limit_reached": available_invites >= 10,
         "profile": profile,
         "vk_bot_link": get_vk_bot_link() or "#",
         "telegram_support_link": TELEGRAM_SUPPORT_LINK,
@@ -641,18 +645,21 @@ async def dashboard_sponsor_upgrade(request: Request):
     return RedirectResponse(confirmation_url, status_code=303)
 
 @router.post("/dashboard/referral-invite")
-async def dashboard_create_referral_invite(request: Request):
+async def dashboard_create_referral_invite(request: Request, return_to: str = Form("/dashboard")):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
     if not is_sponsor_role(user["role"] if "role" in user.keys() else None):
-        return RedirectResponse("/dashboard?error=Инвайт-ссылки+доступны+только+спонсорам", status_code=303)
+        return RedirectResponse(
+            f"{_safe_new_ui_redirect(return_to)}?error=Инвайт-ссылки+доступны+только+спонсорам",
+            status_code=303,
+        )
 
     with get_db_connection() as con:
         stats = get_user_invite_stats(con, int(user["id"]))
         if int(stats["available"] or 0) >= 10:
             return RedirectResponse(
-                "/dashboard?error=У+вас+уже+есть+10+неиспользованных+инвайт-ссылок.+Отправьте+одну+из+них+другу+или+дождитесь+её+использования.",
+                f"{_safe_new_ui_redirect(return_to)}?error=У+вас+уже+есть+10+неиспользованных+инвайт-ссылок.+Отправьте+одну+из+них+другу+или+дождитесь+её+использования.",
                 status_code=303,
             )
         referral = create_referral_invite(con, int(user["id"]))
@@ -667,7 +674,10 @@ async def dashboard_create_referral_invite(request: Request):
             )
         con.commit()
 
-    return RedirectResponse("/dashboard?success=Новая+инвайт-ссылка+создана", status_code=303)
+    return RedirectResponse(
+        f"{_safe_new_ui_redirect(return_to)}?success=Новая+инвайт-ссылка+создана",
+        status_code=303,
+    )
 
 @router.post("/dashboard/vk-link")
 async def dashboard_vk_link(request: Request):
