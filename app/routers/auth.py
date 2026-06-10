@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.core.config import BASE_DIR
+from app.core.config import BASE_DIR, REFERRAL_INVITE_ACCESS_DAYS
 from app.core.db import get_db_connection
 from app.core.security import (
     create_password_hash,
@@ -215,7 +215,7 @@ async def activate_submit(
             (invite["invited_by_user_id"], user_id),
         )
         if invite["key_limit"] is not None:
-            duration_days = invite["duration_days"] or 30
+            duration_days = invite["duration_days"] or REFERRAL_INVITE_ACCESS_DAYS
             active_until = (utcnow() + timedelta(days=duration_days)).isoformat()
             con.execute(
                 (

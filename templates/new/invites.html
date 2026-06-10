@@ -28,6 +28,7 @@
     <section class="card section-card invites-permanent-card">
         <div class="section-title"><div><p class="eyebrow">Постоянный QR-код</p><h2>Постоянная ссылка спонсора</h2></div></div>
         <p class="muted-note">Показывайте эту ссылку или QR любому человеку. Она не одноразовая: при переходе система выдаст свободный одноразовый invite или создаст новый в пределах лимита.</p>
+        <p class="muted-note"><small>Пользователь, зарегистрировавшийся по приглашению, получает 3 дня бесплатного доступа.</small></p>
         <div class="invite-link-box">
             <input id="sponsor-referral-link" type="text" value="{{ sponsor_referral_link }}" readonly />
             <button class="button primary" type="button" data-copy-target="sponsor-referral-link" {% if not sponsor_referral_link %}disabled aria-disabled="true"{% endif %}>Скопировать ссылку</button>
@@ -47,6 +48,7 @@
             <p class="eyebrow">Новый доступ</p>
             <h2>Нет активных приглашений</h2>
             <p>Создайте одноразовую ссылку вручную или используйте постоянный QR-код — он создаст invite автоматически при переходе.</p>
+            <p class="muted-note"><small>Пользователь, зарегистрировавшийся по приглашению, получает 3 дня бесплатного доступа.</small></p>
             <form action="/dashboard/referral-invite" method="post">
                 <input type="hidden" name="return_to" value="/new-ui/invites" />
                 <button class="button primary" type="submit" {% if not can_create_invite %}disabled aria-disabled="true"{% endif %}>Создать приглашение</button>

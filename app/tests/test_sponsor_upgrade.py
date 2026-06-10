@@ -17,6 +17,7 @@ sys.modules.setdefault("dotenv", dotenv_stub)
 
 from app.services.portal import (  # noqa: E402
     apply_sponsor_upgrade,
+    create_referral_invite,
     ensure_sponsor_referral_code,
     get_or_create_invite_for_referral_code,
     get_user_invite_stats,
@@ -190,8 +191,23 @@ class ReferralQrAndRevokeTests(unittest.TestCase):
         invite = get_or_create_invite_for_referral_code(self.con, code)
 
         self.assertTrue(invite["invite_code"])
+        self.assertEqual(invite["duration_days"], 3)
+        self.assertIn("3 дня", invite["title"])
         stats = get_user_invite_stats(self.con, 1)
         self.assertEqual(int(stats["available"] or 0), 1)
+    
+    def test_new_referral_invite_defaults_to_three_free_days(self) -> None:
+        referral = create_referral_invite(self.con, 1)
+
+        invite = self.con.execute(
+            "SELECT duration_days, title, used_at FROM portal_invites WHERE invite_code = ?",
+            (referral["invite_code"],),
+        ).fetchone()
+
+        self.assertIsNotNone(invite)
+        self.assertEqual(invite["duration_days"], 3)
+        self.assertIn("3 дня", invite["title"])
+        self.assertIsNone(invite["used_at"])
 
     def test_referral_link_rejects_regular_user_code(self) -> None:
         user_code = ensure_sponsor_referral_code(self.con, 2)
@@ -221,6 +237,149 @@ class ReferralQrAndRevokeTests(unittest.TestCase):
         )
 
         self.assertFalse(revoke_referral_invite(self.con, 1, 12))
+
+class InviteActivationAccessTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._install_fastapi_stubs()
+        sys.modules.pop("app.core.security", None)
+        sys.modules.pop("app.routers.auth", None)
+        self.auth = importlib.import_module("app.routers.auth")
+        self.con = sqlite3.connect(":memory:")
+        self.con.row_factory = sqlite3.Row
+        self.con.executescript(
+            """
+            CREATE TABLE portal_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER UNIQUE,
+                login TEXT NOT NULL UNIQUE,
+                password_salt TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                invited_by_user_id INTEGER,
+                revoked_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE portal_invites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invite_code TEXT NOT NULL UNIQUE,
+                telegram_id INTEGER,
+                created_at TEXT NOT NULL,
+                used_at TEXT,
+                revoked_at TEXT,
+                plan TEXT,
+                title TEXT,
+                key_limit INTEGER,
+                price_rub INTEGER,
+                duration_days INTEGER,
+                invited_by_user_id INTEGER,
+                created_by_user_id INTEGER,
+                used_by_user_id INTEGER
+            );
+            CREATE TABLE subscriptions (
+                telegram_id INTEGER PRIMARY KEY,
+                active_until TEXT,
+                plan TEXT,
+                key_limit INTEGER,
+                price_rub INTEGER,
+                title TEXT
+            );
+            """
+        )
+        self.auth.get_db_connection = lambda: self.con
+        self.auth.get_current_user = lambda request: None
+
+    def tearDown(self) -> None:
+        self.con.close()
+
+    def _install_fastapi_stubs(self) -> None:
+        fastapi_stub = types.ModuleType("fastapi")
+
+        class APIRouter:
+            def get(self, *args, **kwargs):
+                return lambda func: func
+
+            def post(self, *args, **kwargs):
+                return lambda func: func
+
+        def Form(default=None, *args, **kwargs):
+            return default
+
+        class Request:
+            pass
+
+        fastapi_stub.APIRouter = APIRouter
+        fastapi_stub.Form = Form
+        fastapi_stub.Request = Request
+
+        responses_stub = types.ModuleType("fastapi.responses")
+
+        class RedirectResponse:
+            def __init__(self, url, status_code=307, *args, **kwargs):
+                self.headers = {"location": url}
+                self.status_code = status_code
+                self.url = url
+
+            def set_cookie(self, *args, **kwargs):
+                pass
+
+        responses_stub.RedirectResponse = RedirectResponse
+        responses_stub.HTMLResponse = type("HTMLResponse", (), {})
+        responses_stub.Response = type("Response", (), {})
+        responses_stub.JSONResponse = type("JSONResponse", (), {})
+
+        templating_stub = types.ModuleType("fastapi.templating")
+
+        class Jinja2Templates:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def TemplateResponse(self, *args, **kwargs):
+                return kwargs
+
+        templating_stub.Jinja2Templates = Jinja2Templates
+
+        sys.modules["fastapi"] = fastapi_stub
+        sys.modules["fastapi.responses"] = responses_stub
+        sys.modules["fastapi.templating"] = templating_stub
+
+    def _create_invite(self, code: str, duration_days: int | None = 3) -> None:
+        self.con.execute(
+            """
+            INSERT INTO portal_invites
+            (invite_code, created_at, plan, title, key_limit, price_rub, duration_days, invited_by_user_id, created_by_user_id)
+            VALUES (?, '2026-06-08T12:00:00+00:00', 'plan_5_keys', 'Реферальный тариф', 5, 100, ?, 1, 1)
+            """,
+            (code, duration_days),
+        )
+
+    def test_new_user_registration_by_invite_grants_three_days(self) -> None:
+        self._create_invite("three-day-invite", 3)
+        before = datetime.now(timezone.utc) + timedelta(days=3)
+
+        response = asyncio.run(
+            self.auth.activate_submit(object(), code="three-day-invite", login="friend", password="secret1")
+        )
+        after = datetime.now(timezone.utc) + timedelta(days=3)
+
+        self.assertEqual(response.status_code, 303)
+        subscription = self.con.execute("SELECT active_until FROM subscriptions").fetchone()
+        self.assertIsNotNone(subscription)
+        active_until = datetime.fromisoformat(subscription["active_until"])
+        self.assertGreaterEqual(active_until, before)
+        self.assertLessEqual(active_until, after)
+
+    def test_existing_invite_duration_is_preserved_on_activation(self) -> None:
+        self._create_invite("old-duration-invite", 30)
+        before = datetime.now(timezone.utc) + timedelta(days=30)
+
+        asyncio.run(self.auth.activate_submit(object(), code="old-duration-invite", login="legacy", password="secret1"))
+        after = datetime.now(timezone.utc) + timedelta(days=30)
+
+        active_until = datetime.fromisoformat(
+            self.con.execute("SELECT active_until FROM subscriptions").fetchone()["active_until"]
+        )
+        self.assertGreaterEqual(active_until, before)
+        self.assertLessEqual(active_until, after)
 
 class DashboardReferralInviteRouteTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -337,6 +496,136 @@ class DashboardReferralInviteRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 303)
         self.assertIn("только+спонсоры", response.url)
+
+class DashboardRenewSubscriptionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        DashboardReferralInviteRouteTests._install_fastapi_stubs(self)
+        sys.modules.pop("app.routers.dashboard", None)
+        self.dashboard = importlib.import_module("app.routers.dashboard")
+        self.now = datetime(2026, 6, 8, 12, 0, tzinfo=timezone.utc)
+        self.dashboard.utcnow = lambda: self.now
+        self.con = sqlite3.connect(":memory:")
+        self.con.row_factory = sqlite3.Row
+        self.con.executescript(
+            """
+            CREATE TABLE subscriptions (
+                telegram_id INTEGER PRIMARY KEY,
+                active_until TEXT,
+                plan TEXT,
+                key_limit INTEGER,
+                price_rub INTEGER,
+                title TEXT
+            );
+            CREATE TABLE payments (
+                payment_id TEXT PRIMARY KEY,
+                status TEXT
+            );
+            CREATE TABLE payment_actions (
+                payment_id TEXT PRIMARY KEY,
+                telegram_id INTEGER,
+                action TEXT,
+                target_plan_key TEXT,
+                amount_rub INTEGER,
+                status TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE user_wallets (
+                telegram_id INTEGER PRIMARY KEY,
+                balance_rub INTEGER,
+                updated_at TEXT
+            );
+            """
+        )
+
+    def tearDown(self) -> None:
+        self.con.close()
+
+    def _insert_subscription(self, active_until: str | None, telegram_id: int = 3001) -> None:
+        self.con.execute(
+            (
+                "INSERT INTO subscriptions "
+                "(telegram_id, active_until, plan, key_limit, price_rub, title) "
+                "VALUES (?, ?, 'plan_5_keys', 5, 100, '100 ₽ / 5 ключей')"
+            ),
+            (telegram_id, active_until),
+        )
+
+    def _payment_action_row(
+        self, action: str = "renew", target_plan_key: str | None = None, telegram_id: int = 3001
+    ) -> sqlite3.Row:
+        self.con.execute("INSERT INTO payments (payment_id, status) VALUES ('payment-1', 'pending')")
+        self.con.execute(
+            (
+                "INSERT INTO payment_actions "
+                "(payment_id, telegram_id, action, target_plan_key, amount_rub, status, created_at, updated_at) "
+                "VALUES ('payment-1', ?, ?, ?, 100, 'pending', '', '')"
+            ),
+            (telegram_id, action, target_plan_key),
+        )
+        return self.con.execute("SELECT * FROM payment_actions WHERE payment_id = 'payment-1'").fetchone()
+
+    def test_payment_renew_future_active_until_adds_30_days_to_existing_date(self) -> None:
+        active_until = self.now + timedelta(days=10)
+        self._insert_subscription(active_until.isoformat())
+
+        error = self.dashboard._apply_payment_action(self.con, self._payment_action_row())
+
+        subscription = self.con.execute("SELECT active_until FROM subscriptions WHERE telegram_id = 3001").fetchone()
+        self.assertIsNone(error)
+        self.assertEqual(datetime.fromisoformat(subscription["active_until"]), active_until + timedelta(days=30))
+
+    def test_payment_renew_expired_active_until_starts_from_now(self) -> None:
+        active_until = self.now - timedelta(days=1)
+        self._insert_subscription(active_until.isoformat())
+
+        error = self.dashboard._apply_payment_action(self.con, self._payment_action_row())
+
+        subscription = self.con.execute("SELECT active_until FROM subscriptions WHERE telegram_id = 3001").fetchone()
+        self.assertIsNone(error)
+        self.assertEqual(datetime.fromisoformat(subscription["active_until"]), self.now + timedelta(days=30))
+
+    def test_payment_renew_null_active_until_starts_from_now_without_error(self) -> None:
+        self._insert_subscription(None)
+
+        error = self.dashboard._apply_payment_action(self.con, self._payment_action_row())
+
+        subscription = self.con.execute("SELECT active_until FROM subscriptions WHERE telegram_id = 3001").fetchone()
+        self.assertIsNone(error)
+        self.assertEqual(datetime.fromisoformat(subscription["active_until"]), self.now + timedelta(days=30))
+
+    def test_internal_balance_renew_null_active_until_starts_from_now_without_error(self) -> None:
+        self._insert_subscription(None)
+        self.con.execute(
+            "INSERT INTO user_wallets (telegram_id, balance_rub, updated_at) VALUES (3001, 100, '')"
+        )
+        self.dashboard.get_current_user = lambda request: {"telegram_id": 3001}
+        self.dashboard.get_db_connection = lambda: self.con
+        self.dashboard.yookassa_enabled = lambda: True
+
+        response = asyncio.run(self.dashboard.dashboard_subscription_action(object(), "renew"))
+
+        subscription = self.con.execute("SELECT active_until FROM subscriptions WHERE telegram_id = 3001").fetchone()
+        wallet = self.con.execute("SELECT balance_rub FROM user_wallets WHERE telegram_id = 3001").fetchone()
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("Оплачено+с+внутреннего+баланса", response.url)
+        self.assertEqual(datetime.fromisoformat(subscription["active_until"]), self.now + timedelta(days=30))
+        self.assertEqual(wallet["balance_rub"], 0)
+
+    def test_same_plan_change_null_active_until_starts_from_now_without_error(self) -> None:
+        self._insert_subscription(None)
+
+        error = self.dashboard._apply_payment_action(
+            self.con,
+            self._payment_action_row(action="change_plan", target_plan_key="plan_5"),
+        )
+
+        subscription = self.con.execute(
+            "SELECT active_until, plan FROM subscriptions WHERE telegram_id = 3001"
+        ).fetchone()
+        self.assertIsNone(error)
+        self.assertEqual(subscription["plan"], "plan_5_keys")
+        self.assertEqual(datetime.fromisoformat(subscription["active_until"]), self.now + timedelta(days=30))
 
 if __name__ == "__main__":
     unittest.main()

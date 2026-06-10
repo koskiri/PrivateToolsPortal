@@ -32,6 +32,7 @@ from app.services.portal import (
     create_referral_invite,
     ensure_sponsor_referral_code,
     get_or_create_invite_for_referral_code,
+    parse_subscription_active_until,
     create_vk_link_code,
     create_vpn_key_on_vps,
     create_yookassa_payment,
@@ -367,8 +368,8 @@ def _apply_payment_action(con: sqlite3.Connection, action_row: sqlite3.Row) -> s
         ).fetchone()
         if not subscription:
             return "Подписка+не+найдена"
-        active_until = datetime.fromisoformat(subscription["active_until"])
-        base = active_until if active_until > now else now
+        active_until = parse_subscription_active_until(subscription["active_until"])
+        base = active_until if active_until and active_until > now else now
         new_active_until = base + timedelta(days=SUBSCRIPTION_RENEW_DAYS)
         con.execute(
             "UPDATE subscriptions SET active_until = ? WHERE telegram_id = ?",
@@ -384,8 +385,8 @@ def _apply_payment_action(con: sqlite3.Connection, action_row: sqlite3.Row) -> s
             (action_row["telegram_id"],),
         ).fetchone()
         if current_subscription and current_subscription["plan"] == preset["plan"]:
-            active_until = datetime.fromisoformat(current_subscription["active_until"])
-            base = active_until if active_until > now else now
+            active_until = parse_subscription_active_until(current_subscription["active_until"])
+            base = active_until if active_until and active_until > now else now
             new_active_until = base + timedelta(days=SUBSCRIPTION_RENEW_DAYS)
         else:
             _, _, wallet_credit_rub, new_active_until = build_plan_change_terms(
@@ -854,8 +855,8 @@ async def dashboard_subscription_action(request: Request, action: str = Form(...
                 return RedirectResponse("/dashboard?error=Не+получилось+определить+стоимость+тарифа", status_code=303)
             wallet_balance = get_or_create_wallet_balance(con, user["telegram_id"])
             if wallet_balance >= price_rub and decrease_wallet_balance(con, user["telegram_id"], price_rub):
-                active_until = datetime.fromisoformat(subscription["active_until"])
-                base = active_until if active_until > now else now
+                active_until = parse_subscription_active_until(subscription["active_until"])
+                base = active_until if active_until and active_until > now else now
                 new_active_until = base + timedelta(days=SUBSCRIPTION_RENEW_DAYS)
                 con.execute(
                     "UPDATE subscriptions SET active_until = ? WHERE telegram_id = ?",
