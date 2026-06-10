@@ -4,7 +4,7 @@ import html
 import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from urllib.parse import quote_plus, urlencode
+from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResponse
@@ -284,10 +284,31 @@ def _profile_title_from_key_title(title: str | None, device: str) -> str:
 
     return value or "Профиль подключения"
 
+def safe_return_to(value: str | None, default: str = "/dashboard") -> str:
+    if not value:
+        return default
+
+    parsed = urlsplit(value.strip())
+    if parsed.scheme or parsed.netloc or not parsed.path.startswith("/") or parsed.path.startswith("//"):
+        return default
+
+    allowed_roots = ("/new-ui", "/dashboard")
+    if parsed.path in allowed_roots or any(parsed.path.startswith(f"{root}/") for root in allowed_roots):
+        return urlunsplit(("", "", parsed.path, parsed.query, parsed.fragment))
+
+    return default
+
 def _safe_new_ui_redirect(return_to: str | None, fallback: str = "/dashboard") -> str:
-    if return_to and return_to.startswith("/new-ui"):
-        return return_to
-    return fallback
+    return safe_return_to(return_to, fallback)
+
+
+def _redirect_with_status(return_to: str | None, status_key: str, message: str, default: str = "/dashboard") -> RedirectResponse:
+    redirect_to = safe_return_to(return_to, default)
+    parsed = urlsplit(redirect_to)
+    query = parse_qsl(parsed.query, keep_blank_values=True)
+    query.append((status_key, message))
+    target = urlunsplit(("", "", parsed.path, urlencode(query), parsed.fragment))
+    return RedirectResponse(target, status_code=303)
 
 
 def _build_inline_qr_svg(payload: str) -> str:
@@ -976,7 +997,7 @@ async def dashboard_payment_return(request: Request, payment_id: str = "", retur
 @router.post("/dashboard/create-key")
 async def dashboard_create_key(
     request: Request,
-    key_kind: str = Form(...),
+    key_kind: str = Form(""),
     key_title: str = Form(""),
     return_to: str = Form(""),
     connection_device: str = Form(""),
@@ -989,7 +1010,7 @@ async def dashboard_create_key(
     if key_kind == "vless":
         key_kind = "xray"
     if key_kind not in {"awg", "xray"}:
-        return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Неизвестный+тип+ключа", status_code=303)
+        return _redirect_with_status(return_to, "error", "Неизвестный тип ключа")
 
     normalized_device = _normalize_connection_device(connection_device)
     issuer_device = _issuer_connection_device(normalized_device)
@@ -1008,15 +1029,15 @@ async def dashboard_create_key(
             (user["telegram_id"],),
         ).fetchone()
         if not stats:
-            return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Сначала+подключите+подписку", status_code=303)
+            return _redirect_with_status(return_to, "error", "Сначала подключите подписку")
 
         active_until = datetime.fromisoformat(stats["active_until"])
         if active_until <= now:
             deactivate_user_keys(con, user["telegram_id"])
             con.commit()
-            return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Подписка+истекла,+продлите+ее", status_code=303)
+            return _redirect_with_status(return_to, "error", "Подписка истекла, продлите ее")
         if stats["active_keys"] >= (stats["key_limit"] or 0):
-            return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error=Достигнут+лимит+ключей+для+тарифа", status_code=303)
+            return _redirect_with_status(return_to, "error", "Достигнут лимит ключей для тарифа")
 
         if key_title.strip():
             title = key_title.strip()
@@ -1032,7 +1053,7 @@ async def dashboard_create_key(
                 device=issuer_device,
             )
         except RuntimeError as exc:
-            return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?error={quote_plus(str(exc))}", status_code=303)
+            return _redirect_with_status(return_to, "error", str(exc))
         con.execute(
             (
                 "INSERT INTO vpn_keys "
@@ -1043,7 +1064,7 @@ async def dashboard_create_key(
         )
         con.commit()
 
-    return RedirectResponse(f"{_safe_new_ui_redirect(return_to)}?success=Подключение+создано", status_code=303)
+    return _redirect_with_status(return_to, "success", "Подключение создано")
 
 @router.post("/dashboard/keys/{key_id}/rename")
 async def dashboard_rename_key(request: Request, key_id: int, key_title: str = Form(...)):
