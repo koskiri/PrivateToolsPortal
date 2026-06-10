@@ -129,6 +129,7 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
         for inv in invite_list
     ]
 
+    is_sponsor = is_sponsor_role(user["role"] if "role" in user.keys() else None)
     role_label = get_user_role_label(user["role"] if "role" in user.keys() else None)
 
     support_messages_by_ticket: dict[int, list[sqlite3.Row]] = {}

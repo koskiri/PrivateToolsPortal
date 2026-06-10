@@ -103,8 +103,11 @@ async def activate_page(request: Request, code: str = ""):
                 ),
                 (code,),
             ).fetchone()
+        
+        if not invite_info:
+            error = "Инвайт не найден"
 
-        elif is_invite_revoked(invite_info):
+        if is_invite_revoked(invite_info):
             error = "Инвайт отозван"
             invite_info = None
         elif is_invite_used(invite_info):
