@@ -227,7 +227,11 @@ h3 { font-size: 18px; }
     align-items: center;
     gap: 7px;
     min-height: 20px;
-    color: var(--muted);
+    padding: 0;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    border-radius: 0;
     font-size: 14px;
     font-weight: 500;
     line-height: 1.2;
@@ -239,19 +243,51 @@ h3 { font-size: 18px; }
     justify-content: center;
     width: 16px;
     min-width: 16px;
+    color: currentColor;
     font-size: 15px;
     line-height: 1;
 }
 .status-text { line-height: 1.2; }
 .info-list .status { display: inline-flex; font-size: 14px; }
-.info-list .status-icon, .info-list .status-text { color: inherit; margin-bottom: 0; font-size: inherit; }
+.info-list .status-icon, .info-list .status-text { margin-bottom: 0; font-size: inherit; }
 .info-list .status-icon { display: inline-flex; }
 .info-list .status-text { display: inline; }
-.status-success { color: var(--status-success); }
-.status-connected { color: var(--status-connected); }
-.status-pending { color: var(--status-pending); }
-.status-error { color: var(--status-error); }
-.status-inactive { color: var(--status-inactive); }
+.status-success .status-icon,
+.status-connected .status-icon { color: var(--status-success); }
+.status-pending .status-icon { color: var(--status-pending); }
+.status-error .status-icon { color: var(--status-error); }
+.status-inactive .status-icon { color: var(--status-inactive); }
+[data-theme="light"] .status {
+    gap: 6px;
+    min-height: 0;
+    padding: 4px 10px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+}
+[data-theme="light"] .status-success,
+[data-theme="light"] .status-connected {
+    color: #16A34A;
+    background: #ECFDF3;
+    border-color: #BBF7D0;
+}
+[data-theme="light"] .status-pending {
+    color: #D97706;
+    background: #FFFBEB;
+    border-color: #FDE68A;
+}
+[data-theme="light"] .status-error {
+    color: #DC2626;
+    background: #FEF2F2;
+    border-color: #FECACA;
+}
+[data-theme="light"] .status-inactive {
+    color: #6B7280;
+    background: #F3F4F6;
+    border-color: #E5E7EB;
+}
+[data-theme="light"] .status-icon { color: currentColor; }
 
 .section-card { margin-bottom: 18px; }
 .connection-title { gap: 18px; margin-bottom: 26px; }
