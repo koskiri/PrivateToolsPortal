@@ -17,7 +17,10 @@
                 <p class="eyebrow">Подписка</p>
                 <h2>{{ 'Подписка активна' if subscription_active else 'Подписка неактивна' }}</h2>
             </div>
-            <span class="pill {{ 'success' if subscription_active else 'muted' }}">{{ 'Активна' if subscription_active else 'Неактивна' }}</span>
+            <span class="status {{ 'status-success' if subscription_active else 'status-inactive' }}">
+                <span class="status-icon" aria-hidden="true">{{ '✓' if subscription_active else '⊖' }}</span>
+                <span class="status-text">{{ 'Активна' if subscription_active else 'Неактивно' }}</span>
+            </span>
         </div>
         <div class="metric-row">
             <div><span>Роль</span><strong>{{ role_label }}</strong></div>
@@ -215,7 +218,10 @@
                             <article class="connection-profile profile-card ready" data-connection-card data-connection-link="{{ profile.link|e }}" data-connection-name="{{ profile.title|e }}" data-connection-device="{{ profile.device|e }}" data-connection-kind="{{ profile.kind|e }}" data-connection-qr-url="{{ profile.qr_url|e }}">
                                 <div class="connection-profile__top">
                                     <span class="connection-device-icon" aria-hidden="true">{{ card.icon }}</span>
-                                    <span class="pill success">{{ profile.status }}</span>
+                                    <span class="status status-success">
+                                        <span class="status-icon" aria-hidden="true">✓</span>
+                                        <span class="status-text">{{ profile.status }}</span>
+                                    </span>
                                 </div>
                                 <div class="connection-profile__copy">
                                     <span class="connection-protocol-badge">{{ profile.protocol_label }}</span>

@@ -90,7 +90,15 @@
                 <tbody>
                 {% for item in invite_history %}
                     <tr>
-                        <td data-label="Статус"><span class="pill {{ 'success' if item.status == 'Активен' else 'muted' }}">{{ item.status }}</span></td>
+                        {% set invite_status_class = 'status-success' if item.status == 'Активен' else ('status-pending' if item.status == 'Ожидает' else ('status-error' if item.status == 'Ошибка' else 'status-inactive')) %}
+                        {% set invite_status_icon = '✓' if item.status == 'Активен' else ('◷' if item.status == 'Ожидает' else ('✕' if item.status == 'Ошибка' else '⊖')) %}
+                        {% set invite_status_text = 'Активна' if item.status == 'Активен' else ('Неактивно' if item.status == 'Отозвано' else item.status) %}
+                        <td data-label="Статус">
+                            <span class="status {{ invite_status_class }}">
+                                <span class="status-icon" aria-hidden="true">{{ invite_status_icon }}</span>
+                                <span class="status-text">{{ invite_status_text }}</span>
+                            </span>
+                        </td>
                         <td data-label="Пользователь">
                             <span class="invite-user">{{ item.user }}</span>
                             {% if item.invite_link %}

@@ -8,8 +8,22 @@
         <h2>Контакты</h2>
         <div class="info-list">
             <div><span>Email</span><strong>{{ profile.email }}</strong></div>
-            <div><span>Telegram</span><strong>{{ profile.telegram }}</strong></div>
-            <div><span>VK</span><strong>{{ profile.vk }}</strong></div>
+            <div>
+                <span>Telegram</span>
+                {% set telegram_connected = profile.telegram == 'Подключен' %}
+                <strong class="status {{ 'status-connected' if telegram_connected else 'status-inactive' }}">
+                    <span class="status-icon" aria-hidden="true">{{ '✓' if telegram_connected else '⊖' }}</span>
+                    <span class="status-text">{{ 'Подключено' if telegram_connected else profile.telegram }}</span>
+                </strong>
+            </div>
+            <div>
+                <span>VK</span>
+                {% set vk_connected = profile.vk == 'Подключен' %}
+                <strong class="status {{ 'status-connected' if vk_connected else 'status-inactive' }}">
+                    <span class="status-icon" aria-hidden="true">{{ '✓' if vk_connected else '⊖' }}</span>
+                    <span class="status-text">{{ 'Подключено' if vk_connected else profile.vk }}</span>
+                </strong>
+            </div>
         </div>
     </article>
 
