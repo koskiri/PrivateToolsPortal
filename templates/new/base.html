@@ -29,7 +29,7 @@
                 </a>
             </nav>
             {% set sidebar_vk_support_link = vk_bot_link|default('', true) %}
-            {% set sidebar_telegram_support_link = telegram_support_link|default('', true) %}
+            {% set sidebar_telegram_support_link = telegram_support_link|default('https://t.me/OnlyUs_Support', true) %}
             <div class="sidebar-bottom-stack">
                 <div class="sidebar-card">
                     <span class="eyebrow">Статус</span>
@@ -46,9 +46,9 @@
                             <button class="button secondary sidebar-support-card__button" type="button" disabled aria-disabled="true">VK</button>
                         {% endif %}
                         {% if sidebar_telegram_support_link and sidebar_telegram_support_link != '#' %}
-                            <a class="button secondary sidebar-support-card__button" href="{{ sidebar_telegram_support_link }}" target="_blank" rel="noopener noreferrer">Telegram</a>
+                            <a class="button secondary sidebar-support-card__button" href="{{ sidebar_telegram_support_link }}" target="_blank" rel="noopener noreferrer" aria-label="Написать в Telegram поддержку OnlyUs">Telegram</a>
                         {% else %}
-                            <button class="button secondary sidebar-support-card__button" type="button" disabled aria-disabled="true">Telegram · скоро</button>
+                            <a class="button secondary sidebar-support-card__button" href="https://t.me/OnlyUs_Support" target="_blank" rel="noopener noreferrer" aria-label="Написать в Telegram поддержку OnlyUs">Telegram</a>
                         {% endif %}
                     </div>
                 </div>

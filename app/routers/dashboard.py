@@ -53,6 +53,8 @@ from app.services.portal import (
 router = APIRouter()
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
+TELEGRAM_SUPPORT_LINK = "https://t.me/OnlyUs_Support"
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request, success: str = "", error: str = ""):
     user = get_current_user(request)
@@ -546,7 +548,7 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         "primary_invite_link": primary_invite_link,
         "profile": profile,
         "vk_bot_link": get_vk_bot_link() or "#",
-        "telegram_support_link": "#",  # TODO: подключить реальную ссылку Telegram-поддержки, когда она появится в настройках проекта.
+        "telegram_support_link": TELEGRAM_SUPPORT_LINK,
         "connection_profiles": connection_profiles,
         "connection_device_cards": connection_device_cards,
         "connections_limit": int(stats["key_limit"] or 0) if stats else 0,
