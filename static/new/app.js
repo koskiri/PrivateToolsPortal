@@ -228,7 +228,7 @@
             modal.classList.remove("open");
             modal.setAttribute("aria-hidden", "true");
             modal.setAttribute("hidden", "");
-            const isDeleteAccountModal = modal.dataset.profileModal === "delete-account";
+            if (isDeleteAccountModal) resetDeleteAccountModal(modal);
             if (!hasOpenModal()) document.body.classList.remove("modal-open");
             focusSafely(activeProfileModalTrigger);
             activeProfileModalTrigger = null;
