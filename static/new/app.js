@@ -53,6 +53,9 @@
         function getConnectionModal() {
             return document.getElementById("connection-qr-modal");
         }
+        function getProfileVkModal() {
+            return document.getElementById("profile-vk-modal");
+        }
         function getOpenInstructionModal() {
             return document.querySelector(".instruction-modal.open");
         }
@@ -60,7 +63,8 @@
             return Boolean(
                 getOpenInstructionModal()
                 || getConnectionModal()?.classList.contains("open")
-                || getProfileCreateModal()?.classList.contains("open"),
+                || getProfileCreateModal()?.classList.contains("open")
+                || getProfileVkModal()?.classList.contains("open"),
             );
         }
         function getModalPanel(modal) {
@@ -86,6 +90,7 @@
         function getActiveModalPanel() {
             return getModalPanel(getConnectionModal()?.classList.contains("open") ? getConnectionModal() : null)
                 || getModalPanel(getProfileCreateModal()?.classList.contains("open") ? getProfileCreateModal() : null)
+                || getModalPanel(getProfileVkModal()?.classList.contains("open") ? getProfileVkModal() : null)
                 || getModalPanel(getOpenInstructionModal());
         }
 
@@ -128,6 +133,28 @@
             modal.style.display = "none";
             modal.setAttribute("hidden", "");
             resetProfileCreateForm(modal.querySelector("[data-profile-create-form]"));
+            if (!hasOpenModal()) document.body.classList.remove("modal-open");
+            focusSafely(activeProfileCreateTrigger);
+            activeProfileCreateTrigger = null;
+        }
+
+        function openProfileVkModal(trigger) {
+            const modal = getProfileVkModal();
+            if (!modal) return;
+            activeProfileCreateTrigger = trigger || null;
+            modal.classList.add("open");
+            modal.removeAttribute("hidden");
+            modal.setAttribute("aria-hidden", "false");
+            document.body.classList.add("modal-open");
+            focusSafely(getModalPanel(modal));
+        }
+
+        function closeProfileVkModal() {
+            const modal = getProfileVkModal();
+            if (!modal?.classList.contains("open")) return;
+            modal.classList.remove("open");
+            modal.setAttribute("aria-hidden", "true");
+            modal.setAttribute("hidden", "");
             if (!hasOpenModal()) document.body.classList.remove("modal-open");
             focusSafely(activeProfileCreateTrigger);
             activeProfileCreateTrigger = null;
@@ -390,6 +417,7 @@
                 closeInstructionModal();
                 closeConnectionModal();
                 closeProfileCreateModal();
+                closeProfileVkModal();
                 return;
             }
             if (event.key === "Tab") {
@@ -419,6 +447,10 @@
         document.addEventListener("click", async (event) => {
             if (event.target.closest("[data-profile-create-close]")) {
                 closeProfileCreateModal();
+                return;
+            }
+            if (event.target.closest("[data-vk-link-close]")) {
+                closeProfileVkModal();
                 return;
             }
             if (event.target.closest('[aria-disabled="true"]')) {
@@ -460,6 +492,58 @@
 
             if (event.target.closest("[data-connection-modal-close]")) {
                 closeConnectionModal();
+                return;
+            }
+
+            const vkOpenButton = event.target.closest("[data-vk-link-open]");
+            if (vkOpenButton) {
+                event.preventDefault();
+                const previousText = vkOpenButton.textContent;
+                vkOpenButton.disabled = true;
+                vkOpenButton.textContent = "Создаем код...";
+                try {
+                    const response = await fetch("/dashboard/vk-link", {
+                        method: "POST",
+                        headers: { "X-Requested-With": "XMLHttpRequest" },
+                        credentials: "same-origin",
+                    });
+                    const payload = await response.json();
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || "Не удалось получить код привязки.");
+                    }
+                    const modal = getProfileVkModal();
+                    const code = payload.code || "—";
+                    const botLink = payload.vk_bot_link || document.querySelector("[data-vk-bot-link]")?.getAttribute("href") || "";
+                    const codeElement = modal?.querySelector("[data-vk-link-code]");
+                    const botLinkElement = modal?.querySelector("[data-vk-bot-link]");
+                    if (codeElement) codeElement.textContent = code;
+                    if (botLinkElement instanceof HTMLAnchorElement) {
+                        if (botLink && botLink !== "#") {
+                            botLinkElement.href = botLink;
+                            botLinkElement.hidden = false;
+                        } else {
+                            botLinkElement.hidden = true;
+                        }
+                    }
+                    openProfileVkModal(vkOpenButton);
+                } catch (error) {
+                    alert(error instanceof Error ? error.message : "Не удалось получить код привязки.");
+                } finally {
+                    vkOpenButton.disabled = false;
+                    vkOpenButton.textContent = previousText || "Привязать VK";
+                }
+                return;
+            }
+
+            const vkCopyButton = event.target.closest("[data-vk-link-copy]");
+            if (vkCopyButton) {
+                const code = getProfileVkModal()?.querySelector("[data-vk-link-code]")?.textContent.trim() || "";
+                if (!code || code === "—") {
+                    flashButtonLabel(vkCopyButton, "Код недоступен");
+                    return;
+                }
+                const copied = await copyText(`привязать ${code}`);
+                flashButtonLabel(vkCopyButton, copied ? "Скопировано" : "Не удалось скопировать");
             }
         });
 

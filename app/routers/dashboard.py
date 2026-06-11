@@ -109,6 +109,7 @@ async def dashboard(request: Request, success: str = "", error: str = ""):
             (user["telegram_id"],),
         ).fetchall()
         vk_link = get_vk_link_by_portal_user(con, int(user["id"]))
+        balance_rub = get_or_create_wallet_balance(con, user["telegram_id"]) if user["telegram_id"] is not None else 0
         referral_stats = get_user_invite_stats(con, int(user["id"]))
         invite_list = con.execute(
             (
@@ -554,11 +555,21 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
     connection_profiles = [profile for card in connection_device_cards for profile in card["profiles"]]
 
     login = user["login"] or ""
-    # В portal_users нет отдельных полей email/telegram username; показываем безопасные значения без технических ID.
+    user_columns = set(user.keys())
+    email = (user["email"].strip() if "email" in user_columns and user["email"] else "") or (login if "@" in login else "")
+    telegram_contact = ""
+    for telegram_field in ("telegram_username", "telegram", "telegram_contact"):
+        if telegram_field in user_columns and user[telegram_field]:
+            telegram_contact = str(user[telegram_field]).strip()
+            break
     profile = {
-        "email": login if "@" in login else "Не указан",
-        "telegram": "Подключен" if user["telegram_id"] and int(user["telegram_id"]) > 0 else "Не указан",
+        "login": login,
+        "role": role_label,
+        "email": email,
+        "telegram": telegram_contact,
+        "vk_connected": vk_link is not None,
         "vk": "Подключен" if vk_link else "Не подключен",
+        "balance_rub": balance_rub,
     }
 
     return {
@@ -585,6 +596,8 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
         "sponsor_referral_qr_url": f"https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data={quote_plus(sponsor_referral_link)}" if sponsor_referral_link else "",
         "invite_limit_reached": available_invites >= 10,
         "profile": profile,
+        "balance_rub": balance_rub,
+        "vk_linked": vk_link is not None,
         "vk_bot_link": get_vk_bot_link() or "#",
         "telegram_support_link": TELEGRAM_SUPPORT_LINK,
         "connection_profiles": connection_profiles,
@@ -764,7 +777,7 @@ async def dashboard_vk_link(request: Request):
 
 
 @router.post("/dashboard/vk-unlink")
-async def dashboard_vk_unlink(request: Request):
+async def dashboard_vk_unlink(request: Request, return_to: str = Form("/dashboard")):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
@@ -774,14 +787,8 @@ async def dashboard_vk_unlink(request: Request):
         con.commit()
 
     if unlinked:
-        return RedirectResponse(
-            "/dashboard?success=Бот+VK+успешно+отвязан",
-            status_code=303,
-        )
-    return RedirectResponse(
-        "/dashboard?error=VK+уже+не+привязан",
-        status_code=303,
-    )
+        return _redirect_with_status(return_to, "success", "Бот VK успешно отвязан")
+    return _redirect_with_status(return_to, "error", "VK уже не привязан")
 
 @router.post("/dashboard/change-plan")
 async def dashboard_change_plan(
