@@ -140,13 +140,19 @@ def ensure_billing_tables(con: sqlite3.Connection) -> None:
         """
     )
 
+def _has_notnull_column(con: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    return any(
+        row["name"] == column_name and row["notnull"] == 1
+        for row in con.execute(f"PRAGMA table_info({table_name})").fetchall()
+    )
+
 def ensure_vk_tables(con: sqlite3.Connection) -> None:
     con.execute(
         """
         CREATE TABLE IF NOT EXISTS vk_links (
             vk_user_id INTEGER PRIMARY KEY,
-            portal_user_id INTEGER NOT NULL UNIQUE,
-            telegram_id INTEGER NOT NULL,
+            portal_user_id INTEGER,
+            telegram_id INTEGER,
             created_at TEXT NOT NULL,
             FOREIGN KEY(portal_user_id) REFERENCES portal_users(id)
         )
@@ -156,8 +162,8 @@ def ensure_vk_tables(con: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS vk_link_codes (
             code TEXT PRIMARY KEY,
-            portal_user_id INTEGER NOT NULL,
-            telegram_id INTEGER NOT NULL,
+            portal_user_id INTEGER,
+            telegram_id INTEGER,
             created_at TEXT NOT NULL,
             expires_at TEXT NOT NULL,
             used_at TEXT,
@@ -166,6 +172,81 @@ def ensure_vk_tables(con: sqlite3.Connection) -> None:
         )
         """
     )
+
+    link_columns = {row["name"] for row in con.execute("PRAGMA table_info(vk_links)").fetchall()}
+    if "portal_user_id" not in link_columns:
+        con.execute("ALTER TABLE vk_links ADD COLUMN portal_user_id INTEGER")
+    if "telegram_id" not in link_columns:
+        con.execute("ALTER TABLE vk_links ADD COLUMN telegram_id INTEGER")
+
+    code_columns = {row["name"] for row in con.execute("PRAGMA table_info(vk_link_codes)").fetchall()}
+    if "portal_user_id" not in code_columns:
+        con.execute("ALTER TABLE vk_link_codes ADD COLUMN portal_user_id INTEGER")
+    if "telegram_id" not in code_columns:
+        con.execute("ALTER TABLE vk_link_codes ADD COLUMN telegram_id INTEGER")
+
+    if (
+        _has_notnull_column(con, "vk_links", "portal_user_id")
+        or _has_notnull_column(con, "vk_links", "telegram_id")
+    ):
+        con.execute(
+            """
+            CREATE TABLE vk_links_new (
+                vk_user_id INTEGER PRIMARY KEY,
+                portal_user_id INTEGER,
+                telegram_id INTEGER,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(portal_user_id) REFERENCES portal_users(id)
+            )
+            """
+        )
+        con.execute(
+            """
+            INSERT INTO vk_links_new (vk_user_id, portal_user_id, telegram_id, created_at)
+            SELECT vk_user_id, portal_user_id, telegram_id, created_at
+            FROM vk_links
+            """
+        )
+        con.execute("DROP TABLE vk_links")
+        con.execute("ALTER TABLE vk_links_new RENAME TO vk_links")
+
+    if (
+        _has_notnull_column(con, "vk_link_codes", "portal_user_id")
+        or _has_notnull_column(con, "vk_link_codes", "telegram_id")
+    ):
+        con.execute(
+            """
+            CREATE TABLE vk_link_codes_new (
+                code TEXT PRIMARY KEY,
+                portal_user_id INTEGER,
+                telegram_id INTEGER,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                used_at TEXT,
+                vk_user_id INTEGER,
+                FOREIGN KEY(portal_user_id) REFERENCES portal_users(id)
+            )
+            """
+        )
+        con.execute(
+            """
+            INSERT INTO vk_link_codes_new (code, portal_user_id, telegram_id, created_at, expires_at, used_at, vk_user_id)
+            SELECT code, portal_user_id, telegram_id, created_at, expires_at, used_at, vk_user_id
+            FROM vk_link_codes
+            """
+        )
+        con.execute("DROP TABLE vk_link_codes")
+        con.execute("ALTER TABLE vk_link_codes_new RENAME TO vk_link_codes")
+
+    con.execute("CREATE INDEX IF NOT EXISTS idx_vk_links_portal_user_id ON vk_links(portal_user_id)")
+    con.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_vk_links_portal_user_id_unique "
+        "ON vk_links(portal_user_id) WHERE portal_user_id IS NOT NULL"
+    )
+    con.execute("CREATE INDEX IF NOT EXISTS idx_vk_links_telegram_id ON vk_links(telegram_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_vk_link_codes_portal_user_id ON vk_link_codes(portal_user_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_vk_link_codes_telegram_id ON vk_link_codes(telegram_id)")
+    
     con.execute(
         """
         CREATE TABLE IF NOT EXISTS vk_subscription_reminders (

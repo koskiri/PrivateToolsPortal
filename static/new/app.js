@@ -148,6 +148,14 @@
             activeProfileCreateTrigger = null;
         }
 
+        function setProfileVkError(message) {
+            const errorElement = getProfileVkModal()?.querySelector("[data-vk-link-error]");
+            if (!errorElement) return;
+            const normalizedMessage = (message || "").trim();
+            errorElement.textContent = normalizedMessage;
+            errorElement.hidden = !normalizedMessage;
+        }
+
         function openProfileVkModal(trigger) {
             const modal = getProfileVkModal();
             if (!modal) return;
@@ -568,6 +576,7 @@
                     const botLink = payload.vk_bot_link || document.querySelector("[data-vk-bot-link]")?.getAttribute("href") || "";
                     const codeElement = modal?.querySelector("[data-vk-link-code]");
                     const botLinkElement = modal?.querySelector("[data-vk-bot-link]");
+                    setProfileVkError("");
                     if (codeElement) codeElement.textContent = code;
                     if (botLinkElement instanceof HTMLAnchorElement) {
                         if (botLink && botLink !== "#") {
@@ -580,7 +589,13 @@
                     closeProfileModal();
                     openProfileVkModal(vkOpenButton);
                 } catch (error) {
-                    alert(error instanceof Error ? error.message : "Не удалось получить код привязки.");
+                    const message = error instanceof Error ? error.message : "Не удалось получить код привязки.";
+                    const modal = getProfileVkModal();
+                    const codeElement = modal?.querySelector("[data-vk-link-code]");
+                    if (codeElement) codeElement.textContent = "—";
+                    setProfileVkError(message);
+                    closeProfileModal();
+                    openProfileVkModal(vkOpenButton);
                 } finally {
                     vkOpenButton.disabled = false;
                     vkOpenButton.textContent = previousText || "Привязать VK";

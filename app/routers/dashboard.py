@@ -856,14 +856,9 @@ async def dashboard_vk_link(request: Request):
                 status_code=409,
             )
 
-        telegram_id = _safe_positive_telegram_id(user)
-        if telegram_id is None:
-            return JSONResponse(
-                {"ok": False, "error": "Для привязки VK нужен Telegram ID в аккаунте."},
-                status_code=400,
-            )
-
-        code = create_vk_link_code(con, int(user["id"]), telegram_id)
+        # VK is linked to the authorized portal account in the site profile.
+        # Telegram ID is only carried for compatibility with old bot/dashboard flows.
+        code = create_vk_link_code(con, int(user["id"]), _safe_positive_telegram_id(user))
         con.commit()
 
     return JSONResponse({"ok": True, "code": code, "vk_bot_link": get_vk_bot_link()})

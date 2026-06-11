@@ -617,7 +617,7 @@ def generate_vk_link_code() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(6))
 
 
-def create_vk_link_code(con: sqlite3.Connection, portal_user_id: int, telegram_id: int) -> str:
+def create_vk_link_code(con: sqlite3.Connection, portal_user_id: int, telegram_id: Optional[int] = None) -> str:
     now = utcnow()
     expires_at = now + timedelta(minutes=10)
 
@@ -681,17 +681,30 @@ def consume_vk_link_code(con: sqlite3.Connection, code: str, vk_user_id: int) ->
     if existing_vk:
         return False, "Этот аккаунт ВК уже привязан."
 
-    existing_user_link = con.execute(
-        "SELECT * FROM vk_links WHERE portal_user_id = ?",
-        (row["portal_user_id"],),
-    ).fetchone()
-    if existing_user_link:
-        return False, "К этому аккаунту сайта уже привязан ВК."
+    portal_user_id = row["portal_user_id"]
+    telegram_id = row["telegram_id"]
+
+    if portal_user_id is not None:
+        existing_user_link = con.execute(
+            "SELECT * FROM vk_links WHERE portal_user_id = ?",
+            (portal_user_id,),
+        ).fetchone()
+        if existing_user_link:
+            return False, "К этому аккаунту сайта уже привязан ВК."
+    elif telegram_id is not None:
+        existing_telegram_link = con.execute(
+            "SELECT * FROM vk_links WHERE telegram_id = ?",
+            (telegram_id,),
+        ).fetchone()
+        if existing_telegram_link:
+            return False, "К этому Telegram-аккаунту уже привязан ВК."
+    else:
+        return False, "Код привязки поврежден."
 
     now_iso = utcnow().isoformat()
     con.execute(
         "INSERT INTO vk_links (vk_user_id, portal_user_id, telegram_id, created_at) VALUES (?, ?, ?, ?)",
-        (vk_user_id, row["portal_user_id"], row["telegram_id"], now_iso),
+        (vk_user_id, portal_user_id, telegram_id, now_iso),
     )
     con.execute(
         "UPDATE vk_link_codes SET used_at = ?, vk_user_id = ? WHERE code = ?",
@@ -784,9 +797,10 @@ def send_vk_message_with_keyboard(user_id: int, text: str, keyboard: Optional[st
 def get_vk_linked_account(con: sqlite3.Connection, vk_user_id: int) -> Optional[sqlite3.Row]:
     return con.execute(
         (
-            "SELECT l.vk_user_id, l.telegram_id, l.portal_user_id, u.login "
+            "SELECT l.vk_user_id, COALESCE(l.telegram_id, u.telegram_id) AS telegram_id, "
+            "l.portal_user_id, u.login "
             "FROM vk_links l "
-            "JOIN portal_users u ON u.id = l.portal_user_id "
+            "LEFT JOIN portal_users u ON u.id = l.portal_user_id "
             "WHERE l.vk_user_id = ?"
         ),
         (vk_user_id,),
@@ -1088,12 +1102,18 @@ def get_subscriptions_ending_in_days(con: sqlite3.Connection, days_before_end: i
         return [(int(row["vk_user_id"]), str(row["subscription_end"])) for row in rows]
 
     # Совместимость с текущей схемой портала: subscriptions.telegram_id/active_until + привязки VK.
+    # Новые привязки из профиля сайта могут хранить только portal_user_id, поэтому
+    # связываем подписку как напрямую через vk_links.telegram_id, так и через portal_users.
     if {"telegram_id", "active_until"}.issubset(subscription_columns):
         rows = con.execute(
             """
-            SELECT l.vk_user_id AS vk_user_id, s.active_until AS subscription_end
+            SELECT DISTINCT l.vk_user_id AS vk_user_id, s.active_until AS subscription_end
             FROM subscriptions s
-            JOIN vk_links l ON l.telegram_id = s.telegram_id
+            JOIN vk_links l
+                ON l.telegram_id = s.telegram_id
+                OR (l.portal_user_id IS NOT NULL AND l.portal_user_id IN (
+                    SELECT u.id FROM portal_users u WHERE u.telegram_id = s.telegram_id
+                ))
             WHERE date(s.active_until) = date(?)
             """,
             (target_date,),
@@ -1145,9 +1165,10 @@ def handle_vk_message_new(event: dict) -> None:
         return
 
     with get_db_connection() as con:
-        # Получаем привязанный telegram_id
+        # Получаем telegram_id для старых bot/VPN-команд, если он есть у привязки.
         linked_account = get_vk_linked_account(con, vk_user_id)
-        telegram_id = int(linked_account["telegram_id"]) if linked_account else None
+        linked_telegram_id = linked_account["telegram_id"] if linked_account else None
+        telegram_id = int(linked_telegram_id) if linked_telegram_id is not None else None
 
         # Отправка напоминания о подписке
         if telegram_id:

@@ -924,6 +924,9 @@ th { color: var(--muted); font-size: 13px; }
 .profile-modal > .profile-modal__panel > .button {
     width: 100%;
 }
+.profile-vk-error {
+    margin: 18px 0 0;
+}
 .profile-vk-code {
     margin: 18px 0 0;
     padding: 16px;
