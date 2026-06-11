@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -18,6 +19,21 @@ from app.core.security import (
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+DEFAULT_AUTH_REDIRECT = "/new-ui"
+
+
+def get_safe_auth_redirect(next_url: str = "") -> str:
+    next_url = (next_url or "").strip()
+    if not next_url:
+        return DEFAULT_AUTH_REDIRECT
+
+    parsed = urlsplit(next_url)
+    if parsed.scheme or parsed.netloc or not parsed.path.startswith("/") or next_url.startswith("//"):
+        return DEFAULT_AUTH_REDIRECT
+
+    return next_url
+
 
 
 def utcnow() -> datetime:
@@ -46,9 +62,17 @@ def is_invite_revoked(invite_row: sqlite3.Row | None) -> bool:
 
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, activated: int = 0, invite_used: int = 0, reason: str = "", error: str = ""):
+async def login_page(
+    request: Request,
+    activated: int = 0,
+    invite_used: int = 0,
+    reason: str = "",
+    error: str = "",
+    next: str = "",
+):
+    safe_next = get_safe_auth_redirect(next)
     if get_current_user(request):
-        return RedirectResponse("/dashboard", status_code=303)
+        return RedirectResponse(safe_next, status_code=303)
     success_message = "Аккаунт успешно активирован. Войдите под своим логином и паролем." if activated else None
     invite_used_message = (
         "Этот инвайт уже был использован. Если вы уже зарегистрированы — войдите в аккаунт."
@@ -59,12 +83,22 @@ async def login_page(request: Request, activated: int = 0, invite_used: int = 0,
     return templates.TemplateResponse(
         request=request,
         name="login.html",
-        context={"error": error or None, "success": success_message, "invite_used": invite_used_message},
+        context={
+            "error": error or None,
+            "success": success_message,
+            "invite_used": invite_used_message,
+            "next_url": safe_next if next else "",
+        },
     )
 
 
 @router.post("/login", response_class=HTMLResponse)
-async def login_submit(request: Request, login: str = Form(...), password: str = Form(...)):
+async def login_submit(
+    request: Request,
+    login: str = Form(...),
+    password: str = Form(...),
+    next: str = Form(""),
+):
     with get_db_connection() as con:
         user = con.execute("SELECT * FROM portal_users WHERE login = ?", (login.strip(),)).fetchone()
 
@@ -72,7 +106,10 @@ async def login_submit(request: Request, login: str = Form(...), password: str =
         return templates.TemplateResponse(
             request=request,
             name="login.html",
-            context={"error": "Неверный логин или пароль"},
+            context={
+                "error": "Неверный логин или пароль",
+                "next_url": get_safe_auth_redirect(next) if next else "",
+            },
             status_code=400,
         )
     
@@ -80,11 +117,14 @@ async def login_submit(request: Request, login: str = Form(...), password: str =
         return templates.TemplateResponse(
             request=request,
             name="login.html",
-            context={"error": "Доступ к аккаунту отключен администратором"},
+            context={
+                "error": "Доступ к аккаунту отключен администратором",
+                "next_url": get_safe_auth_redirect(next) if next else "",
+            },
             status_code=403,
         )
 
-    response = RedirectResponse("/dashboard", status_code=303)
+    response = RedirectResponse(get_safe_auth_redirect(next), status_code=303)
     issue_session(response, user["id"])
     return response
 

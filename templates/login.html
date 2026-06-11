@@ -23,6 +23,7 @@
         {% if invite_used %}<div class="notice">{{ invite_used }}</div>{% endif %}
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
         <form method="post" action="/login">
+            {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}" />{% endif %}
             <input type="text" name="login" placeholder="Логин" required />
             <input type="password" name="password" placeholder="Пароль" required />
             <button type="submit">Войти</button>

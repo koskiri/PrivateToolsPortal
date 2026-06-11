@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import BASE_DIR, SESSION_COOKIE
 from app.core.db import get_db_connection
+from app.core.security import get_current_user
 from app.db.migrations import ensure_auth_tables
 from app.routers import admin, auth, dashboard, mobile, vk
 from app.services.portal import run_vk_subscription_reminder_loop
@@ -60,5 +61,7 @@ async def logout(request: Request):
 
 
 @app.get("/", response_class=HTMLResponse)
-async def root_redirect() -> RedirectResponse:
-    return RedirectResponse("/dashboard", status_code=303)
+async def root_redirect(request: Request) -> RedirectResponse:
+    if get_current_user(request):
+        return RedirectResponse("/new-ui", status_code=303)
+    return RedirectResponse("/login", status_code=303)
