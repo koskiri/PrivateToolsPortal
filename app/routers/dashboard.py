@@ -430,7 +430,24 @@ def _apply_payment_action(con: sqlite3.Connection, action_row: sqlite3.Row) -> s
     )
     return None
 
+def _safe_positive_telegram_id(user: sqlite3.Row) -> int | None:
+    if "telegram_id" not in user.keys():
+        return None
+    try:
+        telegram_id = int(user["telegram_id"])
+    except (TypeError, ValueError):
+        return None
+    return telegram_id if telegram_id > 0 else None
 
+
+def _get_safe_wallet_balance(con: sqlite3.Connection, user: sqlite3.Row) -> int:
+    telegram_id = _safe_positive_telegram_id(user)
+    if telegram_id is None:
+        return 0
+    try:
+        return get_or_create_wallet_balance(con, telegram_id)
+    except (sqlite3.Error, TypeError, ValueError, OverflowError):
+        return 0
 
 
 def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectResponse:
@@ -462,6 +479,7 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
             (user["id"],),
         ).fetchall()
         vk_link = get_vk_link_by_portal_user(con, int(user["id"]))
+        balance_rub = _get_safe_wallet_balance(con, user)
         key_rows = con.execute(
             (
                 "SELECT id, kind, title, payload, created_at "
@@ -770,7 +788,14 @@ async def dashboard_vk_link(request: Request):
                 status_code=409,
             )
 
-        code = create_vk_link_code(con, int(user["id"]), int(user["telegram_id"]))
+        telegram_id = _safe_positive_telegram_id(user)
+        if telegram_id is None:
+            return JSONResponse(
+                {"ok": False, "error": "Для привязки VK нужен Telegram ID в аккаунте."},
+                status_code=400,
+            )
+
+        code = create_vk_link_code(con, int(user["id"]), telegram_id)
         con.commit()
 
     return JSONResponse({"ok": True, "code": code, "vk_bot_link": get_vk_bot_link()})
