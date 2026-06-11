@@ -103,15 +103,15 @@
                 <button class="button primary" type="submit">Сохранить</button>
             </div>
         </form>
-    {% endif %}
-    </div>
-</div>
         {% if email_value %}
             <form class="profile-modal-form profile-modal-form--secondary" method="post" action="/new-ui/profile/contacts">
                 <input type="hidden" name="email" value="" />
                 <input type="hidden" name="telegram_contact" value="{{ telegram_value }}" />
                 <button class="button ghost" type="submit">Удалить email</button>
             </form>
+        {% endif %}
+    </div>
+</div>
 
 <div class="profile-modal" data-profile-modal="telegram" aria-hidden="true" hidden>
     <div class="profile-modal__backdrop" data-profile-modal-close></div>
