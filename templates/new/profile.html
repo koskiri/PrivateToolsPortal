@@ -9,6 +9,11 @@
 {% set balance_value = balance_rub|default(profile.balance_rub, true)|default(0, true) %}
 
 <section class="profile-page" aria-label="Настройки аккаунта">
+    {% if request.query_params.get('success') or request.query_params.get('error') %}
+        <div class="profile-flash {{ 'profile-flash--success' if request.query_params.get('success') else 'profile-flash--error' }}" role="status">
+            {{ request.query_params.get('success') or request.query_params.get('error') }}
+        </div>
+    {% endif %}
     <article class="profile-hero" aria-labelledby="profile-hero-title">
         <div class="profile-hero__identity">
             <div class="profile-avatar" aria-hidden="true">{{ display_login[:1]|upper }}</div>
@@ -31,196 +36,171 @@
     </article>
 
     <div class="profile-actions" aria-label="Быстрые действия">
-        <article class="profile-action-card">
-            <div class="profile-action-card__icon" aria-hidden="true">VK</div>
-            <div class="profile-action-card__body">
-                <h3>{{ 'VK подключен' if vk_connected else 'Привязать VK' }}</h3>
-                <p>{{ 'Бот сможет уведомить вас перед окончанием подписки.' if vk_connected else 'Подключите VK, чтобы получать уведомления об окончании подписки.' }}</p>
-            </div>
-            <div class="profile-action-card__aside">
-                {% if vk_connected %}
-                    <form class="profile-action-form" action="/dashboard/vk-unlink" method="post">
-                        <input type="hidden" name="return_to" value="/new-ui/profile" />
-                        <button class="button ghost" type="submit">Отвязать VK</button>
-                    </form>
-                {% else %}
-                    <button class="button primary" type="button" data-vk-link-open>Привязать VK</button>
-                {% endif %}
-            </div>
-        </article>
-
-        <article class="profile-action-card">
+        <article class="profile-action-card" data-profile-modal-open="email">
             <div class="profile-action-card__icon" aria-hidden="true">@</div>
             <div class="profile-action-card__body">
-                <h3>Email для уведомлений</h3>
+                <h3>Email</h3>
                 <p>{{ email_value if email_value else 'Добавьте контактный email для будущих уведомлений.' }}</p>
             </div>
             <div class="profile-action-card__aside">
-                <a class="button secondary" href="#profile-contacts">Настроить</a>
+                <button class="button secondary" type="button" data-profile-modal-open="email">Настроить</button>
             </div>
         </article>
 
-        <article class="profile-action-card">
+        <article class="profile-action-card" data-profile-modal-open="telegram">
+            <div class="profile-action-card__icon" aria-hidden="true">TG</div>
+            <div class="profile-action-card__body">
+                <h3>Telegram</h3>
+                <p>{{ telegram_value if telegram_value else 'Добавьте Telegram как контакт на будущее.' }}</p>
+            </div>
+            <div class="profile-action-card__aside">
+                <button class="button secondary" type="button" data-profile-modal-open="telegram">Настроить</button>
+            </div>
+        </article>
+
+        <article class="profile-action-card" data-profile-modal-open="vk">
+            <div class="profile-action-card__icon" aria-hidden="true">VK</div>
+            <div class="profile-action-card__body">
+                <h3>{{ 'VK подключен' if vk_connected else 'VK' }}</h3>
+                <p>{{ 'Бот сможет предупредить вас перед окончанием подписки.' if vk_connected else 'Подключите VK, чтобы бот мог предупредить об окончании подписки.' }}</p>
+            </div>
+            <div class="profile-action-card__aside">
+                <button class="button secondary" type="button" data-profile-modal-open="vk">Открыть</button>
+            </div>
+        </article>
+
+        <article class="profile-action-card" data-profile-modal-open="password">
             <div class="profile-action-card__icon" aria-hidden="true">🔒</div>
             <div class="profile-action-card__body">
                 <h3>Безопасность</h3>
-                <a class="button secondary" href="#profile-password">Сменить</a>
+                <p>Смените пароль аккаунта без перехода по странице.</p>
             </div>
             <div class="profile-action-card__aside">
-                <span class="profile-inline-status">Позже</span>
+                <button class="button secondary" type="button" data-profile-modal-open="password">Сменить</button>
             </div>
-        </article>
-    </div>
-
-    <div class="profile-settings-grid" aria-label="Настройки профиля">
-        <article class="card section-card profile-settings-card" id="profile-contacts">
-            <div class="section-title">
-                <div>
-                    <p class="eyebrow">Контакты</p>
-                    <h2>Как с вами связаться</h2>
-                </div> 
-            </div>
-            <form class="profile-stack profile-settings-form" method="post" action="/new-ui/profile/contacts">
-                <div class="profile-setting-row profile-setting-row--contact">
-                    <div>
-                        <strong>Email для уведомлений</strong>
-                        <p class="muted-text">{{ email_value if email_value else 'Не указан' }}</p>
-                    </div>
-                    <label class="profile-field">
-                        <span class="visually-hidden">Email для уведомлений</span>
-                        <input type="email" name="email" value="{{ email_value }}" placeholder="email@example.com" autocomplete="email" aria-describedby="email-save-note" />
-                        <small id="email-save-note">Только контактный email. Он не используется для входа или восстановления доступа.</small>
-                    </label>
-                </div>
-
-                <div class="profile-setting-row profile-setting-row--contact">
-                    <div>
-                        <strong>Telegram для связи</strong>
-                        <p class="muted-text">{{ telegram_value if telegram_value else 'Не указан' }}</p>
-                    </div>
-                </div>
-
-                <label class="profile-field">
-                        <span class="visually-hidden">Telegram для связи</span>
-                        <input type="text" name="telegram_contact" value="{{ telegram_value }}" placeholder="@username или https://t.me/username" autocomplete="off" aria-describedby="telegram-save-note" />
-                        <small id="telegram-save-note">Это отдельный контакт профиля, он не меняет Telegram ID аккаунта.</small>
-                    </label>
-                </div>
-
-                <div class="profile-setting-row profile-setting-row--actions">
-                    <div>
-                        <strong>Сохранить контакты</strong>
-                        <p class="muted-text">Поля можно оставить пустыми, чтобы очистить контактные данные.</p>
-                    </div>
-                    <button class="button primary" type="submit">Сохранить</button>
-                </div>
-            </form>
-
-            <div class="profile-stack">
-
-                <div class="profile-setting-row profile-setting-row--compact">
-                    <div>
-                        <strong>VK</strong>
-                        {% if vk_connected %}
-                            <p class="muted-text">Бот сможет уведомить вас перед окончанием подписки.</p>
-                        {% else %}
-                            <p class="muted-text">Подключите VK, чтобы получать уведомления об окончании подписки.</p>
-                        {% endif %}
-                    </div>
-                    <strong class="status {{ 'status-connected' if vk_connected else 'status-inactive' }}">
-                        <span class="status-icon" aria-hidden="true">{{ '✓' if vk_connected else '⊖' }}</span>
-                        <span class="status-text">{{ 'VK подключен' if vk_connected else 'Не подключен' }}</span>
-                    </strong>
-                </div>
-            </div>
-        </article>
-
-        <article class="card section-card profile-settings-card">
-            <div class="section-title">
-                <div>
-                    <p class="eyebrow">Уведомления</p>
-                    <h2>Каналы уведомлений</h2>
-                </div>
-            </div>
-            <div class="profile-stack">
-                <div class="profile-setting-row profile-setting-row--compact">
-                    <div>
-                        <strong>Email уведомления</strong>
-                        <p class="muted-text">Станут доступны после добавления email в профиль.</p>
-                    </div>
-                    <span class="profile-inline-status">Скоро</span>
-                </div>
-
-                <div class="profile-setting-row profile-setting-row--compact">
-                    <div>
-                        <strong>VK уведомления об окончании подписки</strong>
-                        {% if vk_connected %}
-                            <p class="muted-text">Бот сможет уведомить вас перед окончанием подписки.</p>
-                        {% else %}
-                            <p class="muted-text">Подключите VK, чтобы получать уведомления об окончании подписки.</p>
-                        {% endif %}
-                    </div>
-                    {% if vk_connected %}
-                        <form class="profile-action-form" action="/dashboard/vk-unlink" method="post">
-                            <input type="hidden" name="return_to" value="/new-ui/profile" />
-                            <button class="button ghost" type="submit">Отвязать VK</button>
-                        </form>
-                    {% else %}
-                        <button class="button secondary" type="button" data-vk-link-open>Привязать VK</button>
-                    {% endif %}
-                </div>
-            </div>
-        </article>
-
-        <article class="card section-card profile-settings-card" id="profile-password">
-            <div class="section-title">
-                <div>
-                    <p class="eyebrow">Безопасность</p>
-                    <h2>Смена пароля</h2>
-                </div>
-            </div>
-            <form class="profile-stack profile-settings-form" method="post" action="/new-ui/profile/password">
-                <div class="profile-setting-row profile-setting-row--contact">
-                    <div>
-                        <strong>Текущий пароль</strong>
-                        <p class="muted-text">Нужен для подтверждения изменения.</p>
-                    </div>
-                    <label class="profile-field">
-                        <span class="visually-hidden">Текущий пароль</span>
-                        <input type="password" name="current_password" autocomplete="current-password" required />
-                    </label>
-                </div>
-                <div class="profile-setting-row profile-setting-row--contact">
-                    <div>
-                        <strong>Новый пароль</strong>
-                        <p class="muted-text">Минимум 6 символов.</p>
-                    </div>
-                    <label class="profile-field">
-                        <span class="visually-hidden">Новый пароль</span>
-                        <input type="password" name="new_password" autocomplete="new-password" minlength="6" required />
-                    </label>
-                </div>
-                <div class="profile-setting-row profile-setting-row--contact">
-                    <div>
-                        <strong>Повтор нового пароля</strong>
-                        <p class="muted-text">Повторите новый пароль без ошибок.</p>
-                    </div>
-                    <label class="profile-field">
-                        <span class="visually-hidden">Повтор нового пароля</span>
-                        <input type="password" name="confirm_password" autocomplete="new-password" minlength="6" required />
-                    </label>
-                </div>
-                <div class="profile-setting-row profile-setting-row--actions">
-                    <div>
-                        <strong>Обновить пароль</strong>
-                        <p class="muted-text">После успешной смены вы останетесь в аккаунте.</p>
-                    </div>
-                    <button class="button primary" type="submit">Сменить пароль</button>
-                </div>
-            </form>
         </article>
     </div>
 </section>
+
+<div class="profile-modal" data-profile-modal="email" aria-hidden="true" hidden>
+    <div class="profile-modal__backdrop" data-profile-modal-close></div>
+    <div class="profile-modal__panel" role="dialog" aria-modal="true" aria-labelledby="profile-email-modal-title" tabindex="-1">
+        <div class="instruction-modal__head">
+            <div>
+                <p class="eyebrow">Контакт</p>
+                <h2 id="profile-email-modal-title">Email</h2>
+            </div>
+            <button class="icon-button instruction-modal__close" type="button" data-profile-modal-close aria-label="Закрыть">×</button>
+        </div>
+        <p class="profile-modal__description">Email пригодится для уведомлений и восстановления доступа в будущем.</p>
+        <form class="profile-modal-form" method="post" action="/new-ui/profile/contacts">
+            <input type="hidden" name="telegram_contact" value="{{ telegram_value }}" />
+            <label class="profile-field">
+                <span>Email</span>
+                <input type="email" name="email" value="{{ email_value }}" placeholder="email@example.com" autocomplete="email" />
+            </label>
+            <div class="profile-modal-actions">
+                <button class="button primary" type="submit">Сохранить</button>
+            </div>
+        </form>
+    {% endif %}
+    </div>
+</div>
+        {% if email_value %}
+            <form class="profile-modal-form profile-modal-form--secondary" method="post" action="/new-ui/profile/contacts">
+                <input type="hidden" name="email" value="" />
+                <input type="hidden" name="telegram_contact" value="{{ telegram_value }}" />
+                <button class="button ghost" type="submit">Удалить email</button>
+            </form>
+
+<div class="profile-modal" data-profile-modal="telegram" aria-hidden="true" hidden>
+    <div class="profile-modal__backdrop" data-profile-modal-close></div>
+    <div class="profile-modal__panel" role="dialog" aria-modal="true" aria-labelledby="profile-telegram-modal-title" tabindex="-1">
+        <div class="instruction-modal__head">
+            <div>
+                <p class="eyebrow">Контакт</p>
+                <h2 id="profile-telegram-modal-title">Telegram</h2>
+            </div>
+            <button class="icon-button instruction-modal__close" type="button" data-profile-modal-close aria-label="Закрыть">×</button>
+        </div>
+        <p class="profile-modal__description">Укажите Telegram, чтобы мы могли использовать его как контакт в будущем.</p>
+        <form class="profile-modal-form" method="post" action="/new-ui/profile/contacts">
+            <input type="hidden" name="email" value="{{ email_value }}" />
+            <label class="profile-field">
+                <span>Telegram</span>
+                <input type="text" name="telegram_contact" value="{{ telegram_value }}" placeholder="@username или https://t.me/username" autocomplete="off" aria-describedby="profile-telegram-note" />
+                <small id="profile-telegram-note">@username или https://t.me/username</small>
+            </label>
+            <div class="profile-modal-actions">
+                <button class="button primary" type="submit">Сохранить</button>
+            </div>
+            </form>
+        {% if telegram_value %}
+            <form class="profile-modal-form profile-modal-form--secondary" method="post" action="/new-ui/profile/contacts">
+                <input type="hidden" name="email" value="{{ email_value }}" />
+                <input type="hidden" name="telegram_contact" value="" />
+                <button class="button ghost" type="submit">Очистить</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="profile-modal" data-profile-modal="vk" aria-hidden="true" hidden>
+    <div class="profile-modal__backdrop" data-profile-modal-close></div>
+    <div class="profile-modal__panel" role="dialog" aria-modal="true" aria-labelledby="profile-vk-status-modal-title" tabindex="-1">
+        <div class="instruction-modal__head">
+            <div>
+                <p class="eyebrow">VK</p>
+                <h2 id="profile-vk-status-modal-title">VK</h2>
+            </div>
+            <button class="icon-button instruction-modal__close" type="button" data-profile-modal-close aria-label="Закрыть">×</button>
+        </div>
+        {% if vk_connected %}
+            <strong class="status status-success profile-modal__status">
+                <span class="status-icon" aria-hidden="true">✓</span>
+                <span class="status-text">VK подключен</span>
+            </strong>
+            <p class="profile-modal__description">Бот сможет предупредить вас перед окончанием подписки.</p>
+            <form class="profile-action-form" action="/dashboard/vk-unlink" method="post">
+                <input type="hidden" name="return_to" value="/new-ui/profile" />
+                <button class="button ghost" type="submit">Отвязать VK</button>
+            </form>
+        {% else %}
+            <p class="profile-modal__description">Подключите VK, чтобы бот мог предупредить об окончании подписки.</p>
+            <button class="button primary" type="button" data-vk-link-open>Привязать VK</button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="profile-modal" data-profile-modal="password" aria-hidden="true" hidden>
+    <div class="profile-modal__backdrop" data-profile-modal-close></div>
+    <div class="profile-modal__panel" role="dialog" aria-modal="true" aria-labelledby="profile-password-modal-title" tabindex="-1">
+        <div class="instruction-modal__head">
+            <div>
+                <p class="eyebrow">Безопасность</p>
+                <h2 id="profile-password-modal-title">Смена пароля</h2>
+            </div>
+            <button class="icon-button instruction-modal__close" type="button" data-profile-modal-close aria-label="Закрыть">×</button>
+        </div>
+        <form class="profile-modal-form" method="post" action="/new-ui/profile/password">
+            <label class="profile-field">
+                <span>Текущий пароль</span>
+                <input type="password" name="current_password" autocomplete="current-password" required />
+            </label>
+            <label class="profile-field">
+                <span>Новый пароль</span>
+                <input type="password" name="new_password" autocomplete="new-password" minlength="6" required />
+            </label>
+            <label class="profile-field">
+                <span>Повтор нового пароля</span>
+                <input type="password" name="confirm_password" autocomplete="new-password" minlength="6" required />
+            </label>
+            <div class="profile-modal-actions">
+                <button class="button primary" type="submit">Изменить пароль</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <div class="connection-modal profile-vk-modal" id="profile-vk-modal" aria-hidden="true" hidden>
     <div class="connection-modal__backdrop" data-vk-link-close></div>

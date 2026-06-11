@@ -15,6 +15,7 @@
         let activeInstructionTrigger = null;
         let activeConnectionTrigger = null;
         let activeProfileCreateTrigger = null;
+        let activeProfileModalTrigger = null;
         const warnedMissingElements = new Set();
 
         function warnMissingElement(key, message) {
@@ -56,6 +57,13 @@
         function getProfileVkModal() {
             return document.getElementById("profile-vk-modal");
         }
+        function getProfileModal(name) {
+            if (!name) return null;
+            return Array.from(document.querySelectorAll("[data-profile-modal]")).find((modal) => modal.dataset.profileModal === name) || null;
+        }
+        function getOpenProfileModal() {
+            return document.querySelector("[data-profile-modal].open");
+        }
         function getOpenInstructionModal() {
             return document.querySelector(".instruction-modal.open");
         }
@@ -64,11 +72,12 @@
                 getOpenInstructionModal()
                 || getConnectionModal()?.classList.contains("open")
                 || getProfileCreateModal()?.classList.contains("open")
-                || getProfileVkModal()?.classList.contains("open"),
+                || getProfileVkModal()?.classList.contains("open")
+                || getOpenProfileModal(),
             );
         }
         function getModalPanel(modal) {
-            return modal?.querySelector(".instruction-modal__panel, .connection-modal__panel") || null;
+            return modal?.querySelector(".instruction-modal__panel, .connection-modal__panel, .profile-modal__panel") || null;
         }
 
         function getFocusableElements(container) {
@@ -91,6 +100,7 @@
             return getModalPanel(getConnectionModal()?.classList.contains("open") ? getConnectionModal() : null)
                 || getModalPanel(getProfileCreateModal()?.classList.contains("open") ? getProfileCreateModal() : null)
                 || getModalPanel(getProfileVkModal()?.classList.contains("open") ? getProfileVkModal() : null)
+                || getModalPanel(getOpenProfileModal())
                 || getModalPanel(getOpenInstructionModal());
         }
 
@@ -184,6 +194,35 @@
             if (!hasOpenModal()) document.body.classList.remove("modal-open");
             focusSafely(activeInstructionTrigger);
             activeInstructionTrigger = null;
+        }
+
+        function closeProfileModal() {
+            const modal = getOpenProfileModal();
+            if (!modal) return;
+            modal.classList.remove("open");
+            modal.setAttribute("aria-hidden", "true");
+            modal.setAttribute("hidden", "");
+            if (!hasOpenModal()) document.body.classList.remove("modal-open");
+            focusSafely(activeProfileModalTrigger);
+            activeProfileModalTrigger = null;
+        }
+
+        function openProfileModal(name, trigger) {
+            const modal = getProfileModal(name);
+            if (!modal) return;
+            closeInstructionModal();
+            closeConnectionModal();
+            closeProfileCreateModal();
+            closeProfileVkModal();
+            closeProfileModal();
+            activeProfileModalTrigger = trigger || null;
+            modal.classList.add("open");
+            modal.removeAttribute("hidden");
+            modal.setAttribute("aria-hidden", "false");
+            document.body.classList.add("modal-open");
+            const panel = getModalPanel(modal);
+            const firstInput = modal.querySelector("input:not([type='hidden']):not([disabled]), button:not([disabled]), a[href]");
+            focusSafely(firstInput) || focusSafely(panel);
         }
 
         function openProfileCreateModal(trigger) {
@@ -418,6 +457,7 @@
                 closeConnectionModal();
                 closeProfileCreateModal();
                 closeProfileVkModal();
+                closeProfileModal();
                 return;
             }
             if (event.key === "Tab") {
@@ -453,8 +493,20 @@
                 closeProfileVkModal();
                 return;
             }
+            const profileModalClose = event.target.closest("[data-profile-modal-close]");
+            if (profileModalClose) {
+                closeProfileModal();
+                return;
+            }
             if (event.target.closest('[aria-disabled="true"]')) {
                 event.preventDefault();
+                return;
+            }
+
+            const profileModalOpen = event.target.closest("[data-profile-modal-open]");
+            if (profileModalOpen) {
+                event.preventDefault();
+                openProfileModal(profileModalOpen.dataset.profileModalOpen || "", profileModalOpen);
                 return;
             }
 
@@ -525,6 +577,7 @@
                             botLinkElement.hidden = true;
                         }
                     }
+                    closeProfileModal();
                     openProfileVkModal(vkOpenButton);
                 } catch (error) {
                     alert(error instanceof Error ? error.message : "Не удалось получить код привязки.");
