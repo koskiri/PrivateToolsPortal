@@ -79,7 +79,34 @@
                 <button class="button secondary" type="button" data-profile-modal-open="password">Сменить</button>
             </div>
         </article>
+        <a class="profile-action-card profile-action-card--link" href="/logout" aria-label="Выйти из аккаунта">
+            <div class="profile-action-card__icon" aria-hidden="true">↗</div>
+            <div class="profile-action-card__body">
+                <h3>Выйти из аккаунта</h3>
+                <p>Завершить текущую сессию и перейти на страницу входа.</p>
+            </div>
+            <div class="profile-action-card__aside">
+                <span class="button secondary" aria-hidden="true">Выйти</span>
+            </div>
+        </a>
     </div>
+    <section class="profile-danger-zone" aria-labelledby="profile-danger-title">
+        <div>
+            <p class="eyebrow">Опасная зона</p>
+            <h2 id="profile-danger-title">Управление удалением аккаунта</h2>
+            <p>Эти действия влияют на доступ к личному кабинету и подключенным профилям.</p>
+        </div>
+        <article class="profile-action-card profile-action-card--danger" data-profile-modal-open="delete-account">
+            <div class="profile-action-card__icon" aria-hidden="true">!</div>
+            <div class="profile-action-card__body">
+                <h3>Удалить аккаунт</h3>
+                <p>Аккаунт будет отключён, сессии завершены, VK отвязан, а активные VPN-ключи отозваны.</p>
+            </div>
+            <div class="profile-action-card__aside">
+                <button class="button danger" type="button" data-profile-modal-open="delete-account">Удалить</button>
+            </div>
+        </article>
+    </section>
 </section>
 
 <div class="profile-modal" data-profile-modal="email" aria-hidden="true" hidden>
@@ -201,6 +228,37 @@
         </form>
     </div>
 </div>
+
+<div class="profile-modal" data-profile-modal="delete-account" aria-hidden="true" hidden>
+    <div class="profile-modal__backdrop" data-profile-modal-close></div>
+    <div class="profile-modal__panel profile-modal__panel--danger" role="dialog" aria-modal="true" aria-labelledby="profile-delete-modal-title" tabindex="-1">
+        <div class="instruction-modal__head">
+            <div>
+                <p class="eyebrow">Опасная зона</p>
+                <h2 id="profile-delete-modal-title">Удаление аккаунта</h2>
+            </div>
+            <button class="icon-button instruction-modal__close" type="button" data-profile-modal-close aria-label="Закрыть">×</button>
+        </div>
+        <p class="profile-modal__description">После подтверждения аккаунт будет удалён/отключён, доступ к личному кабинету будет закрыт, активные VPN-ключи будут отозваны или отключены, а VK-привязка будет удалена.</p>
+        <ul class="profile-danger-list">
+            <li>Все активные сессии аккаунта будут завершены.</li>
+            <li>Активные VPN-ключи будут отозваны существующим безопасным механизмом удаления ключей.</li>
+            <li>История платежей, действия платежей и подписки не удаляются физически.</li>
+        </ul>
+        <form class="profile-modal-form" method="post" action="/new-ui/profile/delete-account" data-profile-delete-account-form>
+            <label class="profile-field">
+                <span>Для подтверждения введите УДАЛИТЬ</span>
+                <input type="text" name="confirmation" autocomplete="off" data-profile-delete-confirmation required />
+                <small>Без точного подтверждения запрос будет отклонён.</small>
+            </label>
+            <div class="profile-modal-actions">
+                <button class="button danger" type="submit" data-profile-delete-submit disabled aria-disabled="true">Удалить аккаунт</button>
+                <button class="button ghost" type="button" data-profile-modal-close>Отмена</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 
 <div class="connection-modal profile-vk-modal" id="profile-vk-modal" aria-hidden="true" hidden>
     <div class="connection-modal__backdrop" data-vk-link-close></div>

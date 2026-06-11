@@ -204,12 +204,31 @@
             activeInstructionTrigger = null;
         }
 
+        function updateDeleteAccountSubmit(form) {
+            if (!form) return;
+            const confirmation = form.querySelector("[data-profile-delete-confirmation]");
+            const submit = form.querySelector("[data-profile-delete-submit]");
+            if (!submit) return;
+            const confirmed = (confirmation?.value || "").trim() === "УДАЛИТЬ";
+            submit.disabled = !confirmed;
+            submit.setAttribute("aria-disabled", String(!confirmed));
+        }
+
+        function resetDeleteAccountModal(modal) {
+            const form = modal?.querySelector("[data-profile-delete-account-form]");
+            if (!form) return;
+            form.reset();
+            updateDeleteAccountSubmit(form);
+        }
+
         function closeProfileModal() {
             const modal = getOpenProfileModal();
             if (!modal) return;
+            const isDeleteAccountModal = modal.dataset.profileModal === "delete-account";
             modal.classList.remove("open");
             modal.setAttribute("aria-hidden", "true");
             modal.setAttribute("hidden", "");
+            const isDeleteAccountModal = modal.dataset.profileModal === "delete-account";
             if (!hasOpenModal()) document.body.classList.remove("modal-open");
             focusSafely(activeProfileModalTrigger);
             activeProfileModalTrigger = null;
@@ -229,6 +248,8 @@
             modal.setAttribute("aria-hidden", "false");
             document.body.classList.add("modal-open");
             const panel = getModalPanel(modal);
+            const deleteForm = modal.querySelector("[data-profile-delete-account-form]");
+            if (deleteForm) updateDeleteAccountSubmit(deleteForm);
             const firstInput = modal.querySelector("input:not([type='hidden']):not([disabled]), button:not([disabled]), a[href]");
             focusSafely(firstInput) || focusSafely(panel);
         }
@@ -614,6 +635,13 @@
                 flashButtonLabel(vkCopyButton, copied ? "Скопировано" : "Не удалось скопировать");
             }
         });
+
+        document.addEventListener("input", (event) => {
+            const deleteAccountForm = event.target.closest("[data-profile-delete-account-form]");
+            if (deleteAccountForm) updateDeleteAccountSubmit(deleteAccountForm);
+        });
+
+        document.querySelectorAll("[data-profile-delete-account-form]").forEach(updateDeleteAccountSubmit);
 
         document.addEventListener("submit", async (event) => {
             const createForm = event.target.closest("[data-profile-create-form]");

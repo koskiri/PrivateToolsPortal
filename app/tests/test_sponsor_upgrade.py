@@ -318,6 +318,10 @@ class InviteActivationAccessTests(unittest.TestCase):
                 self.headers = {"location": url}
                 self.status_code = status_code
                 self.url = url
+                self.deleted_cookies = []
+
+            def delete_cookie(self, key, *args, **kwargs):
+                self.deleted_cookies.append(key)
 
             def set_cookie(self, *args, **kwargs):
                 pass
@@ -414,6 +418,10 @@ class DashboardReferralInviteRouteTests(unittest.TestCase):
                 self.headers = {"location": url}
                 self.status_code = status_code
                 self.url = url
+                self.deleted_cookies = []
+
+            def delete_cookie(self, key, *args, **kwargs):
+                self.deleted_cookies.append(key)
 
         responses_stub.RedirectResponse = RedirectResponse
         responses_stub.HTMLResponse = type("HTMLResponse", (), {})
@@ -566,6 +574,75 @@ class DashboardReferralInviteRouteTests(unittest.TestCase):
         self.assertIn("success=", response.url)
         row = con.execute("SELECT password_salt, password_hash FROM portal_users WHERE id = 42").fetchone()
         self.assertTrue(self.dashboard.verify_password("newsecret", row["password_salt"], row["password_hash"]))
+        con.close()
+
+    def test_profile_delete_account_soft_deletes_sessions_vk_and_vpn_keys(self) -> None:
+        con = self._setup_profile_db()
+        con.executescript(
+            """
+            CREATE TABLE portal_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL UNIQUE,
+                user_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            );
+            CREATE TABLE vk_links (
+                vk_user_id INTEGER PRIMARY KEY,
+                portal_user_id INTEGER,
+                telegram_id INTEGER,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE vpn_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                title TEXT,
+                payload TEXT,
+                created_at TEXT NOT NULL,
+                revoked_at TEXT,
+                vps_id INTEGER,
+                peer_pub TEXT,
+                peer_ip TEXT
+            );
+            """
+        )
+        con.execute(
+            "INSERT INTO portal_sessions (session_id, user_id, created_at, expires_at) VALUES ('session-a', 42, '', '')"
+        )
+        con.execute(
+            "INSERT INTO vk_links (vk_user_id, portal_user_id, telegram_id, created_at) VALUES (7001, 42, 1006, '')"
+        )
+        con.execute(
+            """
+            INSERT INTO vpn_keys (id, telegram_id, kind, title, payload, created_at, revoked_at, vps_id, peer_pub, peer_ip)
+            VALUES (9, 1006, 'xray', 'Android', 'vless://secret', '', NULL, NULL, NULL, NULL)
+            """
+        )
+
+        response = asyncio.run(self.dashboard.new_ui_profile_delete_account(object(), confirmation="УДАЛИТЬ"))
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.url, "/login?account_deleted=1")
+        self.assertIn(self.dashboard.SESSION_COOKIE, response.deleted_cookies)
+        user = con.execute("SELECT revoked_at FROM portal_users WHERE id = 42").fetchone()
+        self.assertIsNotNone(user["revoked_at"])
+        self.assertEqual(con.execute("SELECT COUNT(*) FROM portal_sessions WHERE user_id = 42").fetchone()[0], 0)
+        self.assertIsNone(con.execute("SELECT * FROM vk_links WHERE portal_user_id = 42").fetchone())
+        key = con.execute("SELECT revoked_at, payload FROM vpn_keys WHERE id = 9").fetchone()
+        self.assertIsNotNone(key["revoked_at"])
+        self.assertEqual(key["payload"], "")
+        con.close()
+
+    def test_profile_delete_account_rejects_bad_confirmation(self) -> None:
+        con = self._setup_profile_db()
+
+        response = asyncio.run(self.dashboard.new_ui_profile_delete_account(object(), confirmation="delete"))
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("error=", response.url)
+        user = con.execute("SELECT revoked_at FROM portal_users WHERE id = 42").fetchone()
+        self.assertIsNone(user["revoked_at"])
         con.close()
 
     def test_referral_invite_allows_sponsor_to_create_invite(self) -> None:

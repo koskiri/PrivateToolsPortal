@@ -19,6 +19,7 @@ from app.core.config import (
     SPONSOR_UPGRADE_ACTION,
     SPONSOR_UPGRADE_AMOUNT_RUB,
     SPONSOR_UPGRADE_DESCRIPTION,
+    SESSION_COOKIE,
     SUBSCRIPTION_RENEW_DAYS,
     TARIFF_PRESETS,
     USER_TARIFF_CHOICES,
@@ -745,6 +746,36 @@ async def new_ui_profile_change_password(
         con.commit()
 
     return _redirect_with_status("/new-ui/profile", "success", "Пароль изменён")
+
+@router.post("/new-ui/profile/delete-account")
+async def new_ui_profile_delete_account(
+    request: Request,
+    confirmation: str = Form(""),
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    if confirmation.strip() != "УДАЛИТЬ":
+        return _redirect_with_status("/new-ui/profile", "error", "Введите УДАЛИТЬ для подтверждения удаления аккаунта")
+
+    now_iso = utcnow().isoformat()
+    with get_db_connection() as con:
+        con.execute(
+            "UPDATE portal_users SET revoked_at = ?, updated_at = ? WHERE id = ?",
+            (now_iso, now_iso, user["id"]),
+        )
+        con.execute("DELETE FROM portal_sessions WHERE user_id = ?", (user["id"],))
+        unlink_vk_by_portal_user(con, int(user["id"]))
+
+        telegram_id = _safe_positive_telegram_id(user)
+        if telegram_id is not None:
+            deactivate_user_keys(con, telegram_id)
+        con.commit()
+
+    response = RedirectResponse("/login?account_deleted=1", status_code=303)
+    response.delete_cookie(SESSION_COOKIE)
+    return response
 
 @router.post("/dashboard/sponsor-upgrade")
 async def dashboard_sponsor_upgrade(request: Request):
