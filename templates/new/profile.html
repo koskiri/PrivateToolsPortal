@@ -53,10 +53,10 @@
             <div class="profile-action-card__icon" aria-hidden="true">@</div>
             <div class="profile-action-card__body">
                 <h3>Email для уведомлений</h3>
-                <p>Скоро можно будет добавить email для уведомлений и восстановления доступа.</p>
+                <p>{{ email_value if email_value else 'Добавьте контактный email для будущих уведомлений.' }}</p>
             </div>
             <div class="profile-action-card__aside">
-                <span class="profile-inline-status">Скоро</span>
+                <a class="button secondary" href="#profile-contacts">Настроить</a>
             </div>
         </article>
 
@@ -64,7 +64,7 @@
             <div class="profile-action-card__icon" aria-hidden="true">🔒</div>
             <div class="profile-action-card__body">
                 <h3>Безопасность</h3>
-                <p>Смена пароля будет доступна позже.</p>
+                <a class="button secondary" href="#profile-password">Сменить</a>
             </div>
             <div class="profile-action-card__aside">
                 <span class="profile-inline-status">Позже</span>
@@ -73,32 +73,50 @@
     </div>
 
     <div class="profile-settings-grid" aria-label="Настройки профиля">
-        <article class="card section-card profile-settings-card">
+        <article class="card section-card profile-settings-card" id="profile-contacts">
             <div class="section-title">
                 <div>
                     <p class="eyebrow">Контакты</p>
                     <h2>Как с вами связаться</h2>
                 </div> 
             </div>
-            <div class="profile-stack">
+            <form class="profile-stack profile-settings-form" method="post" action="/new-ui/profile/contacts">
                 <div class="profile-setting-row profile-setting-row--contact">
                     <div>
-                        <strong>Email</strong>
+                        <strong>Email для уведомлений</strong>
                         <p class="muted-text">{{ email_value if email_value else 'Не указан' }}</p>
                     </div>
                     <label class="profile-field">
-                        <span class="visually-hidden">Email</span>
-                        <input type="email" value="{{ email_value }}" placeholder="email@example.com" disabled aria-describedby="email-save-note" />
-                        <small id="email-save-note">Скоро можно будет добавить email для уведомлений и восстановления доступа.</small>
+                        <span class="visually-hidden">Email для уведомлений</span>
+                        <input type="email" name="email" value="{{ email_value }}" placeholder="email@example.com" autocomplete="email" aria-describedby="email-save-note" />
+                        <small id="email-save-note">Только контактный email. Он не используется для входа или восстановления доступа.</small>
                     </label>
                 </div>
 
-                <div class="profile-setting-row profile-setting-row--compact">
+                <div class="profile-setting-row profile-setting-row--contact">
                     <div>
-                        <strong>Telegram</strong>
+                        <strong>Telegram для связи</strong>
                         <p class="muted-text">{{ telegram_value if telegram_value else 'Не указан' }}</p>
                     </div>
                 </div>
+
+                <label class="profile-field">
+                        <span class="visually-hidden">Telegram для связи</span>
+                        <input type="text" name="telegram_contact" value="{{ telegram_value }}" placeholder="@username или https://t.me/username" autocomplete="off" aria-describedby="telegram-save-note" />
+                        <small id="telegram-save-note">Это отдельный контакт профиля, он не меняет Telegram ID аккаунта.</small>
+                    </label>
+                </div>
+
+                <div class="profile-setting-row profile-setting-row--actions">
+                    <div>
+                        <strong>Сохранить контакты</strong>
+                        <p class="muted-text">Поля можно оставить пустыми, чтобы очистить контактные данные.</p>
+                    </div>
+                    <button class="button primary" type="submit">Сохранить</button>
+                </div>
+            </form>
+
+            <div class="profile-stack">
 
                 <div class="profile-setting-row profile-setting-row--compact">
                     <div>
@@ -151,13 +169,55 @@
                         <button class="button secondary" type="button" data-vk-link-open>Привязать VK</button>
                     {% endif %}
                 </div>
-                <div class="profile-setting-row profile-setting-row--compact profile-setting-row--quiet">
-                    <div>
-                        <strong>Смена пароля</strong>
-                        <p class="muted-text">Будет доступна позже.</p>
-                    </div>
+            </div>
+        </article>
+
+        <article class="card section-card profile-settings-card" id="profile-password">
+            <div class="section-title">
+                <div>
+                    <p class="eyebrow">Безопасность</p>
+                    <h2>Смена пароля</h2>
                 </div>
             </div>
+            <form class="profile-stack profile-settings-form" method="post" action="/new-ui/profile/password">
+                <div class="profile-setting-row profile-setting-row--contact">
+                    <div>
+                        <strong>Текущий пароль</strong>
+                        <p class="muted-text">Нужен для подтверждения изменения.</p>
+                    </div>
+                    <label class="profile-field">
+                        <span class="visually-hidden">Текущий пароль</span>
+                        <input type="password" name="current_password" autocomplete="current-password" required />
+                    </label>
+                </div>
+                <div class="profile-setting-row profile-setting-row--contact">
+                    <div>
+                        <strong>Новый пароль</strong>
+                        <p class="muted-text">Минимум 6 символов.</p>
+                    </div>
+                    <label class="profile-field">
+                        <span class="visually-hidden">Новый пароль</span>
+                        <input type="password" name="new_password" autocomplete="new-password" minlength="6" required />
+                    </label>
+                </div>
+                <div class="profile-setting-row profile-setting-row--contact">
+                    <div>
+                        <strong>Повтор нового пароля</strong>
+                        <p class="muted-text">Повторите новый пароль без ошибок.</p>
+                    </div>
+                    <label class="profile-field">
+                        <span class="visually-hidden">Повтор нового пароля</span>
+                        <input type="password" name="confirm_password" autocomplete="new-password" minlength="6" required />
+                    </label>
+                </div>
+                <div class="profile-setting-row profile-setting-row--actions">
+                    <div>
+                        <strong>Обновить пароль</strong>
+                        <p class="muted-text">После успешной смены вы останетесь в аккаунте.</p>
+                    </div>
+                    <button class="button primary" type="submit">Сменить пароль</button>
+                </div>
+            </form>
         </article>
     </div>
 </section>

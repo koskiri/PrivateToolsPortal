@@ -844,6 +844,8 @@ th { color: var(--muted); font-size: 13px; }
     font-size: 12px;
     line-height: 1.35;
 }
+.profile-settings-form { margin: 18px 0 0; }
+.profile-setting-row--actions .button { min-height: 42px; padding-inline: 16px; }
 .profile-action-form { margin: 0; }
 .profile-vk-code {
     margin: 18px 0 0;

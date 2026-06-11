@@ -15,6 +15,8 @@ def ensure_auth_tables() -> None:
                 login TEXT NOT NULL UNIQUE,
                 password_salt TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
+                email TEXT,
+                telegram_contact TEXT,
                 revoked_at TEXT,
                 role TEXT DEFAULT 'user',
                 referral_code TEXT UNIQUE,
@@ -218,6 +220,8 @@ def migrate_telegram_columns(con: sqlite3.Connection) -> None:
         user_columns_before_migration = {row["name"] for row in users_telegram_notnull}
         role_select = "COALESCE(role, 'user')" if "role" in user_columns_before_migration else "'user'"
         referral_code_select = "referral_code" if "referral_code" in user_columns_before_migration else "NULL"
+        email_select = "email" if "email" in user_columns_before_migration else "NULL"
+        telegram_contact_select = "telegram_contact" if "telegram_contact" in user_columns_before_migration else "NULL"
         con.execute(
             """
             CREATE TABLE portal_users_new (
@@ -226,6 +230,8 @@ def migrate_telegram_columns(con: sqlite3.Connection) -> None:
                 login TEXT NOT NULL UNIQUE,
                 password_salt TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
+                email TEXT,
+                telegram_contact TEXT,
                 role TEXT DEFAULT 'user',
                 referral_code TEXT UNIQUE,
                 created_at TEXT NOT NULL,
@@ -235,14 +241,18 @@ def migrate_telegram_columns(con: sqlite3.Connection) -> None:
         )
         con.execute(
             f"""
-            INSERT INTO portal_users_new (id, telegram_id, login, password_salt, password_hash, role, referral_code, created_at, updated_at)
-            SELECT id, telegram_id, login, password_salt, password_hash, {role_select}, {referral_code_select}, created_at, updated_at
+            INSERT INTO portal_users_new (id, telegram_id, login, password_salt, password_hash, email, telegram_contact, role, referral_code, created_at, updated_at)
+            SELECT id, telegram_id, login, password_salt, password_hash, {email_select}, {telegram_contact_select}, {role_select}, {referral_code_select}, created_at, updated_at
             FROM portal_users
             """
         )
         con.execute("DROP TABLE portal_users")
         con.execute("ALTER TABLE portal_users_new RENAME TO portal_users")
     users_columns = {row["name"] for row in con.execute("PRAGMA table_info(portal_users)").fetchall()}
+    if "email" not in users_columns:
+        con.execute("ALTER TABLE portal_users ADD COLUMN email TEXT")
+    if "telegram_contact" not in users_columns:
+        con.execute("ALTER TABLE portal_users ADD COLUMN telegram_contact TEXT")
     if "revoked_at" not in users_columns:
         con.execute("ALTER TABLE portal_users ADD COLUMN revoked_at TEXT")
     if "role" not in users_columns:

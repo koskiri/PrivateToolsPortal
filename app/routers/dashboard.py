@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import os
+import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit, urlunsplit
@@ -23,7 +24,7 @@ from app.core.config import (
     USER_TARIFF_CHOICES,
 )
 from app.core.db import get_db_connection
-from app.core.security import get_current_user
+from app.core.security import create_password_hash, get_current_user, verify_password
 from app.services.portal import (
     build_activate_link,
     build_sponsor_referral_link,
@@ -58,6 +59,22 @@ router = APIRouter()
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 TELEGRAM_SUPPORT_LINK = "https://t.me/OnlyUs_Support"
+MIN_PASSWORD_LENGTH = 6
+EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+TELEGRAM_CONTACT_RE = re.compile(r"^@[A-Za-z0-9_]{5,32}$")
+TELEGRAM_CONTACT_URL_RE = re.compile(r"^https://t\.me/[A-Za-z0-9_]{5,32}/?$")
+
+
+def _is_valid_email_contact(value: str) -> bool:
+    return not value or EMAIL_RE.fullmatch(value) is not None
+
+
+def _is_valid_telegram_contact(value: str) -> bool:
+    return (
+        not value
+        or TELEGRAM_CONTACT_RE.fullmatch(value) is not None
+        or TELEGRAM_CONTACT_URL_RE.fullmatch(value) is not None
+    )
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request, success: str = "", error: str = ""):
@@ -574,12 +591,8 @@ def _get_new_ui_context(request: Request, active_page: str) -> dict | RedirectRe
 
     login = user["login"] or ""
     user_columns = set(user.keys())
-    email = (user["email"].strip() if "email" in user_columns and user["email"] else "") or (login if "@" in login else "")
-    telegram_contact = ""
-    for telegram_field in ("telegram_username", "telegram", "telegram_contact"):
-        if telegram_field in user_columns and user[telegram_field]:
-            telegram_contact = str(user[telegram_field]).strip()
-            break
+    email = user["email"].strip() if "email" in user_columns and user["email"] else ""
+    telegram_contact = user["telegram_contact"].strip() if "telegram_contact" in user_columns and user["telegram_contact"] else ""
     profile = {
         "login": login,
         "role": role_label,
@@ -677,6 +690,61 @@ async def new_ui_profile(request: Request):
     if isinstance(context, RedirectResponse):
         return context
     return templates.TemplateResponse(request=request, name="new/profile.html", context=context)
+
+@router.post("/new-ui/profile/contacts")
+async def new_ui_profile_update_contacts(
+    request: Request,
+    email: str = Form(""),
+    telegram_contact: str = Form(""),
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    email_value = email.strip()
+    telegram_value = telegram_contact.strip()
+    if not _is_valid_email_contact(email_value):
+        return _redirect_with_status("/new-ui/profile", "error", "Укажите корректный email")
+    if not _is_valid_telegram_contact(telegram_value):
+        return _redirect_with_status("/new-ui/profile", "error", "Укажите Telegram в формате @username или https://t.me/username")
+
+    with get_db_connection() as con:
+        con.execute(
+            "UPDATE portal_users SET email = ?, telegram_contact = ?, updated_at = ? WHERE id = ?",
+            (email_value or None, telegram_value or None, utcnow().isoformat(), user["id"]),
+        )
+        con.commit()
+
+    return _redirect_with_status("/new-ui/profile", "success", "Контакты сохранены")
+
+
+@router.post("/new-ui/profile/password")
+async def new_ui_profile_change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    if not verify_password(current_password, user["password_salt"], user["password_hash"]):
+        return _redirect_with_status("/new-ui/profile", "error", "Неверный текущий пароль")
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        return _redirect_with_status("/new-ui/profile", "error", f"Новый пароль должен быть не короче {MIN_PASSWORD_LENGTH} символов")
+    if new_password != confirm_password:
+        return _redirect_with_status("/new-ui/profile", "error", "Новые пароли не совпадают")
+
+    salt_hex, password_hash = create_password_hash(new_password)
+    with get_db_connection() as con:
+        con.execute(
+            "UPDATE portal_users SET password_salt = ?, password_hash = ?, updated_at = ? WHERE id = ?",
+            (salt_hex, password_hash, utcnow().isoformat(), user["id"]),
+        )
+        con.commit()
+
+    return _redirect_with_status("/new-ui/profile", "success", "Пароль изменён")
 
 @router.post("/dashboard/sponsor-upgrade")
 async def dashboard_sponsor_upgrade(request: Request):

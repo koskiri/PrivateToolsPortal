@@ -453,6 +453,121 @@ class DashboardReferralInviteRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 303)
         self.assertIn("только+спонсорам", response.url)
 
+    def _setup_profile_db(self, password: str = "oldsecret") -> sqlite3.Connection:
+        con = sqlite3.connect(":memory:")
+        con.row_factory = sqlite3.Row
+        salt, password_hash = self.dashboard.create_password_hash(password)
+        con.executescript(
+            """
+            CREATE TABLE portal_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER UNIQUE,
+                login TEXT NOT NULL UNIQUE,
+                password_salt TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                email TEXT,
+                telegram_contact TEXT,
+                role TEXT DEFAULT 'user',
+                revoked_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        con.execute(
+            """
+            INSERT INTO portal_users
+            (id, telegram_id, login, password_salt, password_hash, role, created_at, updated_at)
+            VALUES (42, 1006, 'profile-user', ?, ?, 'user', '2026-06-11T00:00:00+00:00', '2026-06-11T00:00:00+00:00')
+            """,
+            (salt, password_hash),
+        )
+        self.dashboard.get_db_connection = lambda: con
+        self.dashboard.get_current_user = lambda request: con.execute(
+            "SELECT * FROM portal_users WHERE id = 42"
+        ).fetchone()
+        return con
+
+    def test_profile_contacts_save_and_clear_email_and_telegram_contact(self) -> None:
+        con = self._setup_profile_db()
+
+        response = asyncio.run(
+            self.dashboard.new_ui_profile_update_contacts(
+                object(), email=" user@example.com ", telegram_contact=" @OnlyUs_user "
+            )
+        )
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("success=", response.url)
+        row = con.execute("SELECT email, telegram_contact FROM portal_users WHERE id = 42").fetchone()
+        self.assertEqual(row["email"], "user@example.com")
+        self.assertEqual(row["telegram_contact"], "@OnlyUs_user")
+
+        asyncio.run(self.dashboard.new_ui_profile_update_contacts(object(), email="", telegram_contact=""))
+        row = con.execute("SELECT email, telegram_contact FROM portal_users WHERE id = 42").fetchone()
+        self.assertIsNone(row["email"])
+        self.assertIsNone(row["telegram_contact"])
+        con.close()
+
+    def test_profile_contacts_accepts_t_me_url_and_rejects_bad_values(self) -> None:
+        con = self._setup_profile_db()
+
+        response = asyncio.run(
+            self.dashboard.new_ui_profile_update_contacts(
+                object(), email="notify@example.com", telegram_contact="https://t.me/OnlyUs_user"
+            )
+        )
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("success=", response.url)
+        row = con.execute("SELECT telegram_contact FROM portal_users WHERE id = 42").fetchone()
+        self.assertEqual(row["telegram_contact"], "https://t.me/OnlyUs_user")
+
+        response = asyncio.run(
+            self.dashboard.new_ui_profile_update_contacts(
+                object(), email="not-an-email", telegram_contact="https://example.com/user"
+            )
+        )
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("error=", response.url)
+        con.close()
+
+    def test_profile_password_change_and_errors(self) -> None:
+        con = self._setup_profile_db()
+
+        response = asyncio.run(
+            self.dashboard.new_ui_profile_change_password(
+                object(), current_password="wrong", new_password="newsecret", confirm_password="newsecret"
+            )
+        )
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("error=", response.url)
+
+        response = asyncio.run(
+            self.dashboard.new_ui_profile_change_password(
+                object(), current_password="oldsecret", new_password="newsecret", confirm_password="different"
+            )
+        )
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("error=", response.url)
+
+        response = asyncio.run(
+            self.dashboard.new_ui_profile_change_password(
+                object(), current_password="oldsecret", new_password="short", confirm_password="short"
+            )
+        )
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("error=", response.url)
+
+        response = asyncio.run(
+            self.dashboard.new_ui_profile_change_password(
+                object(), current_password="oldsecret", new_password="newsecret", confirm_password="newsecret"
+            )
+        )
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("success=", response.url)
+        row = con.execute("SELECT password_salt, password_hash FROM portal_users WHERE id = 42").fetchone()
+        self.assertTrue(self.dashboard.verify_password("newsecret", row["password_salt"], row["password_hash"]))
+        con.close()
+
     def test_referral_invite_allows_sponsor_to_create_invite(self) -> None:
         self.dashboard.get_current_user = lambda request: self._user("sponsor")
         self.dashboard.get_user_invite_stats = lambda con, user_id: {"available": 0}
