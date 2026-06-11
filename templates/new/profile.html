@@ -2,92 +2,164 @@
 {% block title %}Профиль — OnlyUs{% endblock %}
 {% block heading %}Профиль{% endblock %}
 {% block content %}
+{% set display_login = profile.login or user.login or 'user' %}
 {% set email_value = profile.email or '' %}
+{% set telegram_value = profile.telegram or '' %}
 {% set vk_connected = profile.vk_connected %}
+{% set balance_value = balance_rub|default(profile.balance_rub, true)|default(0, true) %}
 
-<section class="profile-layout" aria-label="Профиль пользователя">
-    <article class="card section-card profile-panel profile-panel--wide">
-        <div class="section-title">
-            <div>
-                <p class="eyebrow">Аккаунт</p>
-                <h2>Данные пользователя</h2>
-            </div>
-        </div>
-        <div class="info-list profile-info-list">
-            <div><span>Логин</span><strong>{{ profile.login or user.login }}</strong></div>
-            <div><span>Роль</span><strong>{{ profile.role or role_label }}</strong></div>
-            {% if email_value %}
-                <div><span>Email</span><strong>{{ email_value }}</strong></div>
-            {% endif %}
-            {% if profile.telegram %}
-                <div><span>Telegram для связи</span><strong>{{ profile.telegram }}</strong></div>
-            {% endif %}
-            <div>
-                <span>Статус VK</span>
-                <strong class="status {{ 'status-connected' if vk_connected else 'status-inactive' }}">
-                    <span class="status-icon" aria-hidden="true">{{ '✓' if vk_connected else '⊖' }}</span>
-                    <span class="status-text">{{ 'Подключен' if vk_connected else 'Не подключен' }}</span>
-                </strong>
-            </div>
-        </div>
-    </article>
-
-    <article class="card section-card profile-panel">
-        <p class="eyebrow">Баланс</p>
-        <h2>Внутренний баланс</h2>
-        <div class="balance-card">
-            <span>Текущий баланс</span>
-            <strong>{{ balance_rub|default(profile.balance_rub, true)|default(0, true) }} ₽</strong>
-            <p class="muted-text">Используется для внутренних возвратов и списаний в кабинете.</p>
-        </div>
-    </article>
-
-    <article class="card section-card profile-panel profile-panel--wide">
-        <div class="section-title">
-            <div>
-                <p class="eyebrow">Уведомления</p>
-                <h2>Каналы уведомлений</h2>
-            </div>
-        </div>
-        <div class="profile-stack">
-            <div class="profile-setting-row">
-                <div>
-                    <strong>Email уведомления</strong>
-                    <p class="muted-text">Email может пригодиться для будущих рассылок или верификации.</p>
+<section class="profile-page" aria-label="Настройки аккаунта">
+    <article class="profile-hero" aria-labelledby="profile-hero-title">
+        <div class="profile-hero__identity">
+            <div class="profile-avatar" aria-hidden="true">{{ display_login[:1]|upper }}</div>
+            <div class="profile-hero__copy">
+                <p class="eyebrow">Аккаунт OnlyUs</p>
+                <h2 id="profile-hero-title">{{ display_login }}</h2>
+                <div class="profile-hero__badges" aria-label="Статусы аккаунта">
+                    <span class="profile-badge profile-badge--role">{{ 'Спонсор' if is_sponsor else 'Пользователь' }}</span>
+                    <span class="profile-badge {{ 'profile-badge--connected' if vk_connected else 'profile-badge--muted' }}">
+                        {{ 'VK подключен' if vk_connected else 'VK не подключен' }}
+                    </span>
                 </div>
-                <label class="profile-field">
-                    <span class="visually-hidden">Email</span>
-                    <input type="email" value="{{ email_value }}" placeholder="email@example.com" readonly aria-describedby="email-save-note" />
-                    <small id="email-save-note">Сохранение будет доступно позже.</small>
-                </label>
             </div>
-            <div class="profile-setting-row">
+        </div>
+        <div class="profile-hero__balance" aria-label="Баланс">
+            <span>Баланс</span>
+            <strong>{{ balance_value }} ₽</strong>
+            <small>Внутренние возвраты и списания</small>
+        </div>
+    </article>
+
+    <div class="profile-actions" aria-label="Быстрые действия">
+        <article class="profile-action-card">
+            <div class="profile-action-card__icon" aria-hidden="true">VK</div>
+            <div class="profile-action-card__body">
+                <h3>{{ 'VK подключен' if vk_connected else 'Привязать VK' }}</h3>
+                <p>{{ 'Бот сможет уведомить вас перед окончанием подписки.' if vk_connected else 'Подключите VK, чтобы получать уведомления об окончании подписки.' }}</p>
+            </div>
+            <div class="profile-action-card__aside">
+                {% if vk_connected %}
+                    <form class="profile-action-form" action="/dashboard/vk-unlink" method="post">
+                        <input type="hidden" name="return_to" value="/new-ui/profile" />
+                        <button class="button ghost" type="submit">Отвязать VK</button>
+                    </form>
+                {% else %}
+                    <button class="button primary" type="button" data-vk-link-open>Привязать VK</button>
+                {% endif %}
+            </div>
+        </article>
+
+        <article class="profile-action-card">
+            <div class="profile-action-card__icon" aria-hidden="true">@</div>
+            <div class="profile-action-card__body">
+                <h3>Email для уведомлений</h3>
+                <p>Скоро можно будет добавить email для уведомлений и восстановления доступа.</p>
+            </div>
+            <div class="profile-action-card__aside">
+                <span class="profile-inline-status">Скоро</span>
+            </div>
+        </article>
+
+        <article class="profile-action-card">
+            <div class="profile-action-card__icon" aria-hidden="true">🔒</div>
+            <div class="profile-action-card__body">
+                <h3>Безопасность</h3>
+                <p>Смена пароля будет доступна позже.</p>
+            </div>
+            <div class="profile-action-card__aside">
+                <span class="profile-inline-status">Позже</span>
+            </div>
+        </article>
+    </div>
+
+    <div class="profile-settings-grid" aria-label="Настройки профиля">
+        <article class="card section-card profile-settings-card">
+            <div class="section-title">
                 <div>
-                    <strong>VK уведомления</strong>
+                    <p class="eyebrow">Контакты</p>
+                    <h2>Как с вами связаться</h2>
+                </div> 
+            </div>
+            <div class="profile-stack">
+                <div class="profile-setting-row profile-setting-row--contact">
+                    <div>
+                        <strong>Email</strong>
+                        <p class="muted-text">{{ email_value if email_value else 'Не указан' }}</p>
+                    </div>
+                    <label class="profile-field">
+                        <span class="visually-hidden">Email</span>
+                        <input type="email" value="{{ email_value }}" placeholder="email@example.com" disabled aria-describedby="email-save-note" />
+                        <small id="email-save-note">Скоро можно будет добавить email для уведомлений и восстановления доступа.</small>
+                    </label>
+                </div>
+
+                <div class="profile-setting-row profile-setting-row--compact">
+                    <div>
+                        <strong>Telegram</strong>
+                        <p class="muted-text">{{ telegram_value if telegram_value else 'Не указан' }}</p>
+                    </div>
+                </div>
+
+                <div class="profile-setting-row profile-setting-row--compact">
+                    <div>
+                        <strong>VK</strong>
+                        {% if vk_connected %}
+                            <p class="muted-text">Бот сможет уведомить вас перед окончанием подписки.</p>
+                        {% else %}
+                            <p class="muted-text">Подключите VK, чтобы получать уведомления об окончании подписки.</p>
+                        {% endif %}
+                    </div>
+                    <strong class="status {{ 'status-connected' if vk_connected else 'status-inactive' }}">
+                        <span class="status-icon" aria-hidden="true">{{ '✓' if vk_connected else '⊖' }}</span>
+                        <span class="status-text">{{ 'VK подключен' if vk_connected else 'Не подключен' }}</span>
+                    </strong>
+                </div>
+            </div>
+        </article>
+
+        <article class="card section-card profile-settings-card">
+            <div class="section-title">
+                <div>
+                    <p class="eyebrow">Уведомления</p>
+                    <h2>Каналы уведомлений</h2>
+                </div>
+            </div>
+            <div class="profile-stack">
+                <div class="profile-setting-row profile-setting-row--compact">
+                    <div>
+                        <strong>Email уведомления</strong>
+                        <p class="muted-text">Станут доступны после добавления email в профиль.</p>
+                    </div>
+                    <span class="profile-inline-status">Скоро</span>
+                </div>
+
+                <div class="profile-setting-row profile-setting-row--compact">
+                    <div>
+                        <strong>VK уведомления об окончании подписки</strong>
+                        {% if vk_connected %}
+                            <p class="muted-text">Бот сможет уведомить вас перед окончанием подписки.</p>
+                        {% else %}
+                            <p class="muted-text">Подключите VK, чтобы получать уведомления об окончании подписки.</p>
+                        {% endif %}
+                    </div>
                     {% if vk_connected %}
-                        <p class="muted-text">Уведомления об окончании подписки доступны через VK.</p>
+                        <form class="profile-action-form" action="/dashboard/vk-unlink" method="post">
+                            <input type="hidden" name="return_to" value="/new-ui/profile" />
+                            <button class="button ghost" type="submit">Отвязать VK</button>
+                        </form>
                     {% else %}
-                        <p class="muted-text">Подключите VK, чтобы получать уведомления об окончании подписки.</p>
+                        <button class="button secondary" type="button" data-vk-link-open>Привязать VK</button>
                     {% endif %}
                 </div>
-                <strong class="status {{ 'status-connected' if vk_connected else 'status-inactive' }}">
-                    <span class="status-icon" aria-hidden="true">{{ '✓' if vk_connected else '⊖' }}</span>
-                    <span class="status-text">{{ 'Доступно' if vk_connected else 'Не подключено' }}</span>
-                </strong>
+                <div class="profile-setting-row profile-setting-row--compact profile-setting-row--quiet">
+                    <div>
+                        <strong>Смена пароля</strong>
+                        <p class="muted-text">Будет доступна позже.</p>
+                    </div>
+                </div>
             </div>
-        </div>
-    </article>
-    
-    <article class="card section-card profile-panel profile-panel--wide">
-        <p class="eyebrow">Безопасность</p>
-        <h2>Доступ к аккаунту</h2>
-        <div class="action-list profile-security-list">
-            <div class="action-button" role="note">
-                <span>Сменить пароль</span>
-                <small>Смена пароля будет доступна позже</small>
-            </div>
-        </div>
-    </article>
+        </article>
+    </div>
 </section>
 
 <div class="connection-modal profile-vk-modal" id="profile-vk-modal" aria-hidden="true" hidden>
